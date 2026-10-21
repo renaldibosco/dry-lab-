@@ -11,7 +11,7 @@
     set(k, v) { try { localStorage.setItem('drylab.' + k, v); } catch (e) { /* storage full or blocked */ } },
   };
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const showHooks = {}, langHooks = [];
+  const showHooks = {}, langHooks = [], dataHooks = [], geneHooks = [];
 
   // ------------------------------------------------------------ helpers
   let toastTimer;
@@ -44,13 +44,13 @@
     if (tab === 'seq' && S.rec) drawGC();
     if (tab === 'genes' && S.orfs.length) drawOrfMap();
     if (tab === 'pcr' && S.program) drawProgram(S.program);
-    if (showHooks[tab]) showHooks[tab]();
+    (showHooks[tab] || []).forEach(f => f());
   }
   function prepCanvas(cv) {
     const r = window.devicePixelRatio || 1, w = cv.clientWidth || 320, h = cv.clientHeight || +cv.getAttribute('height');
     cv.width = Math.round(w * r); cv.height = Math.round(h * r);
     const g = cv.getContext('2d'); g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, w, h);
-    g.font = '11px system-ui, sans-serif';
+    g.font = '11px "DL Sans", system-ui, sans-serif';
     return { g, w, h };
   }
   function conditions() {
@@ -121,11 +121,19 @@
   // ------------------------------------------------------------ 2. genes
   function runOrfs(quiet) {
     if (!S.rec) { if (!quiet) toast(T('Analyze a sequence first')); return; }
-    S.orfs = B.findOrfs(S.rec.seq, {
-      minAA: Math.max(10, +$('minAA').value || 100),
-      starts: $('altStarts').checked ? ['ATG', 'GTG', 'TTG'] : ['ATG'],
-      bothStrands: $('bothStrands').checked, partial: $('partial').checked,
-    });
+    const seq = S.rec.seq, want = Math.max(10, +$('minAA').value || 100);
+    const opt = { starts: $('altStarts').checked ? ['ATG', 'GTG', 'TTG'] : ['ATG'], bothStrands: $('bothStrands').checked, partial: $('partial').checked };
+    S.orfs = B.findOrfs(seq, Object.assign({ minAA: want }, opt));
+    S.orfNote = null;
+    if (!S.orfs.length) {
+      // nothing that long: look for shorter genes instead of showing an empty screen
+      for (const m of [30, 10]) {
+        if (m >= want) continue;
+        const o = B.findOrfs(seq, Object.assign({ minAA: m }, opt));
+        if (o.length) { S.orfs = o; S.orfNote = { want, got: m }; break; }
+      }
+      if (!S.orfs.length) S.orfNote = { none: true };
+    }
     renderGenes();
     fillTargets();
     if (!quiet) toast(T('{n} genes found', { n: S.orfs.length }));
@@ -134,11 +142,21 @@
   function renderGenes() {
     $('genesEmpty').classList.add('hidden');
     $('orfMapCard').classList.remove('hidden');
-    $('orfCount').textContent = S.orfs.length ? T('{n} genes found (longest first)', { n: S.orfs.length })
-      : T('No genes found with these settings. Try a smaller "shortest gene" number.');
+    const L = S.rec.seq.length, most = Math.max(0, Math.floor(L / 3) - 1), n = S.orfNote;
+    $('orfCount').textContent = S.orfs.length ? T('{n} genes found (longest first)', { n: S.orfs.length }) : T('No genes found');
+    let note = '';
+    if (n && !n.none) {
+      note = T('No genes of {a}+ amino acids, so showing shorter ones ({b}+ amino acids).', { a: n.want, b: n.got });
+      if (most < n.want) note += ' ' + T('Your sequence is {l} bp, so the longest possible gene is {m} amino acids.', { l: fmtN(L), m: most });
+    } else if (n && n.none) {
+      note = T('No start codon (ATG) followed by a stop codon in any reading frame. Try "Also GTG and TTG starts", or check that this is DNA and not a protein sequence.');
+    }
+    $('orfNote').textContent = note;
+    $('orfNote').classList.toggle('hidden', !note);
     renderAnnotated();
     renderOrfs();
     drawOrfMap();
+    dataHooks.forEach(f => f());
   }
 
   function orfCard(o, i) {
@@ -168,8 +186,9 @@
       <p class="learn">${T('This is a possible gene. Real genes usually also have a ribosome binding site (like AGGAGG) a few bases before the start codon.')}</p>
       <div class="row wrap"><button class="btn primary small" data-act="primers">${T('Design primers')}</button>
       <button class="btn small" data-act="cprot">${T('Copy protein')}</button><button class="btn small" data-act="cdna">${T('Copy DNA')}</button>
-      <button class="btn small" data-act="share">${T('Share')}</button></div>`;
+      <button class="btn small" data-act="share">${T('Share')}</button></div><div class="gx"></div>`;
     box.classList.remove('hidden');
+    geneHooks.forEach(f => f(box.querySelector('.gx'), o, i));
     box.onclick = (e) => {
       e.stopPropagation();
       const a = e.target.dataset.act; if (!a) return;
@@ -221,6 +240,7 @@
     exact: 'Primers sit exactly on the first and last bases of the gene, so you copy the whole gene from start codon to stop codon (for cloning or expressing it).',
     flank: 'Primers sit just outside the region, so the copy contains all of it with a little extra (for checking or sequencing a gene).',
     anywhere: 'Finds the best primer pair anywhere in the sequence with a product in your size range (for detection, for example "is this DNA present?").',
+    qpcr: 'qPCR primers: a short product (70-150 bp) inside your gene, Tm 58-62 °C, both primers within 2 °C. These rules replace the Settings for this mode.',
   };
 
   function fillTargets() {
@@ -236,8 +256,8 @@
   function onTarget() {
     const v = $('targetSelect').value || 'all';
     $('customRegion').classList.toggle('hidden', v !== 'custom');
-    if (v === 'all') setMode('anywhere');
-    else if (S.mode === 'anywhere') setMode('exact');
+    if (v === 'all' && S.mode !== 'qpcr') setMode('anywhere');
+    else if (v !== 'all' && S.mode === 'anywhere') setMode('exact');
   }
 
   function setMode(m) {
@@ -268,14 +288,31 @@
       sizeMax: +$('pSizeMax').value || 1000, maxTmDiff: +$('pTmDiff').value || 3, results: +$('pResults').value || 5,
       cond: conditions(), fTail: tail('fSite'), rTail: tail('rSite'),
     };
+    // NdeI (CATATG) and NcoI (CCATGG) contain ATG: build the site from the gene's own start codon so the protein stays right
+    let tailNote = '';
+    const fz = $('fSite').value;
+    if (S.mode === 'exact' && (fz === 'NdeI' || fz === 'NcoI') && region.label !== 'whole sequence') {
+      const gs = region.strand === '-' ? B.revcomp(S.rec.seq.slice(region.end - 4, region.end)) : S.rec.seq.substr(region.start - 1, 4);
+      if (gs.startsWith('ATG')) {
+        if (fz === 'NdeI') { o.fTail = 'GCGCCAT'; tailNote = "NdeI site (CATATG) is made with the gene's own ATG, so the protein starts exactly at your start codon."; }
+        else if (gs[3] === 'G') { o.fTail = 'GCGCCC'; tailNote = "NcoI site (CCATGG) is made with the gene's own ATG."; }
+        else { o.fTail = 'GCGCCCATGGCT'; tailNote = 'NcoI site (CCATGG) plus GCT: this adds one alanine after the start codon but keeps your gene in frame.'; }
+      }
+    }
     if (o.lenMax < o.lenMin) [o.lenMin, o.lenMax] = [o.lenMax, o.lenMin];
-    const mode = region.label === 'whole sequence' && S.mode === 'flank' ? 'anywhere' : S.mode;
+    const whole = region.label === 'whole sequence';
+    let mode = whole && S.mode === 'flank' ? 'anywhere' : S.mode;
+    if (mode === 'qpcr') {
+      Object.assign(o, { sizeMin: 70, sizeMax: 150, tmMin: 58, tmOpt: 60, tmMax: 62, lenMin: 18, lenMax: 24, gcMin: 40, gcMax: 60, maxTmDiff: 2 });
+      mode = whole ? 'anywhere' : 'inside';
+      if (region.end - region.start + 1 < 70) { toast(T('This region is too short for two primers')); return; }
+    }
     if (mode === 'exact' && region.end - region.start + 1 < 2 * o.lenMin) { toast(T('This region is too short for two primers')); return; }
     $('primerOut').innerHTML = `<div class="card muted">${T('Designing primers...')}</div>`;
     setTimeout(() => {
       const res = B.designPrimers(S.rec.seq, region, mode, o);
       S.pairs = res.pairs;
-      S.design = { res, region, o };
+      S.design = { res, region, o, qpcr: S.mode === 'qpcr', tailNote };
       renderPairs();
       if (res.pairs.length) $('primerOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 30);
@@ -298,18 +335,21 @@
 
   function renderPairs() {
     if (!S.design) return;
-    const { res, region, o } = S.design;
+    const { res, region, o, qpcr, tailNote } = S.design;
     let html = res.notes.map(n => `<div class="card warn">${esc(T(n))}</div>`).join('');
+    if (qpcr && !res.pairs.length) html += `<div class="card warn">${T('No qPCR pair fits inside this region. Try "Whole sequence" or a longer gene.')}</div>`;
     res.pairs.forEach((p, i) => {
       const pi = p.issues.length ? p.issues.map(x => `<span class="badge">${esc(T(x))}</span>`).join('') : '';
       html += `<div class="card pair"><h3>${T('Pair')} ${i + 1}${i === 0 ? ` <span class="tag">${T('best')}</span>` : ''}</h3>
         ${primerHtml('Forward', p.forward, o.fTail)}${primerHtml('Reverse', p.reverse, o.rTail)}
-        <div class="kv"><span>${T('Product')} <b>${fmtN(p.productSize)} bp</b></span><span>GC <b>${p.productGC}%</b></span><span>${T('Tm gap')} <b>${p.tmDiff} °C</b></span></div>
+        <div class="kv"><span>${T('Product')} <b>${fmtN(p.productSize)} bp</b></span><span>GC <b>${p.productGC}%</b></span><span>${T('Tm gap')} <b>${p.tmDiff} °C</b></span>${qpcr ? `<span>${T('Melt peak')} ~<b>${B.round(B.tmProduct(S.rec.seq.slice(p.forward.start - 1, p.reverse.end), conditions().na), 1)} °C</b></span>` : ''}</div>
         <div class="badges">${pi}</div>
         <div class="row wrap"><button class="btn primary small" data-pcr="${i}">${T('Use for PCR')} &rarr;</button>
         <button class="btn small" data-gel="${i}">${T('See on gel')}</button>
         <button class="btn small" data-copy="${i}">${T('Copy')}</button><button class="btn small" data-share="${i}">${T('Share order')}</button></div></div>`;
     });
+    if (tailNote && res.pairs.length) html += `<p class="learn">${T(tailNote)}</p>`;
+    if (qpcr && res.pairs.length) html += `<p class="learn">${T('For SYBR Green qPCR: one sharp melt-curve peak near this temperature means one clean product. A second, lower peak usually means primer-dimers. Run a no-template control.')}</p>`;
     if (res.pairs.length) html += `<p class="learn">${T('Tm here is the nearest-neighbour value for your salt settings, like Primer3. The simple classroom rule 2(A+T) + 4(G+C) gives {t} °C for the first forward primer. Order primers as standard desalted oligos, 25 nmol scale.', { t: res.pairs[0].forward.tmBasic })}</p>`;
     $('primerOut').innerHTML = html;
     $('primerOut').onclick = (e) => {
@@ -386,18 +426,18 @@
       g.fillStyle = col; g.globalAlpha = 0.10; g.fillRect(x + ramp, y, seg - ramp, tY(0) - y); g.globalAlpha = 1;
       g.strokeStyle = css('--muted'); g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, lastY); g.lineTo(x + ramp, y); g.stroke();
       g.strokeStyle = col; g.lineWidth = 4; g.beginPath(); g.moveTo(x + ramp, y); g.lineTo(x + seg, y); g.stroke();
-      g.fillStyle = col; g.font = '600 11px system-ui, sans-serif';
+      g.fillStyle = col; g.font = '600 11px "DL Sans", system-ui, sans-serif';
       g.fillText(s.temp + '', x + ramp + 2, y - 6);
       if (s.group) { (groups[s.group] = groups[s.group] || { a: x, b: x + seg, n: s.cycles }); groups[s.group].b = x + seg; }
       lastY = y; x += seg;
     });
-    g.fillStyle = css('--ink'); g.strokeStyle = css('--ink'); g.lineWidth = 1; g.font = '600 11px system-ui, sans-serif';
+    g.fillStyle = css('--ink'); g.strokeStyle = css('--ink'); g.lineWidth = 1; g.font = '600 11px "DL Sans", system-ui, sans-serif';
     for (const k in groups) {
       const gr = groups[k], yb = h - padB + 6;
       g.beginPath(); g.moveTo(gr.a + 2, yb - 4); g.lineTo(gr.a + 2, yb); g.lineTo(gr.b - 2, yb); g.lineTo(gr.b - 2, yb - 4); g.stroke();
       const t = 'x ' + gr.n + ' ' + T('cycles'); g.fillText(t, (gr.a + gr.b) / 2 - g.measureText(t).width / 2, yb + 13);
     }
-    g.fillStyle = css('--muted'); g.font = '11px system-ui, sans-serif'; g.fillText('°C', 4, 10);
+    g.fillStyle = css('--muted'); g.font = '11px "DL Sans", system-ui, sans-serif'; g.fillText('°C', 4, 10);
   }
 
   // PCR animation: one cycle at a time, copies double each cycle
@@ -435,15 +475,15 @@
     for (let i = 1; i < pts.length; i++) if (phase <= pts[i][0]) { const [p0, t0] = pts[i - 1], [p1, t1] = pts[i]; curT = t0 + (t1 - t0) * (phase - p0) / (p1 - p0); break; }
     const col = curT >= 90 ? css('--hot') : curT >= 70 ? css('--warm') : css('--cool');
     g.fillStyle = col; g.beginPath(); g.arc(pad + phase * (tw - pad), tY(curT), 6, 0, 7); g.fill();
-    g.font = '600 13px system-ui, sans-serif'; g.fillText(Math.round(curT) + ' °C', pad, 14);
+    g.font = '600 13px "DL Sans", system-ui, sans-serif'; g.fillText(Math.round(curT) + ' °C', pad, 14);
     const stage = phase < 0.37 ? T('Separating strands') : phase < 0.69 ? T('Primers sticking') : T('Copying');
-    g.fillStyle = css('--muted'); g.font = '12px system-ui, sans-serif'; g.fillText(stage, pad, h - 6);
+    g.fillStyle = css('--muted'); g.font = '12px "DL Sans", system-ui, sans-serif'; g.fillText(stage, pad, h - 6);
     // right: copies on a log scale
     const x0 = tw + 24, bw = w - x0 - 10, copiesNow = Math.pow(2, n + (phase > 0.69 ? (phase - 0.69) / 0.31 : 0));
-    g.fillStyle = css('--ink'); g.font = '700 20px system-ui, sans-serif';
+    g.fillStyle = css('--ink'); g.font = '700 20px "DL Sans", system-ui, sans-serif';
     const big = copiesNow >= 1e9 ? (copiesNow / 1e9).toFixed(2) + ' ' + T('billion') : copiesNow >= 1e6 ? (copiesNow / 1e6).toFixed(1) + ' ' + T('million') : Math.round(copiesNow).toLocaleString('en-IN');
     g.fillText(big, x0, 30);
-    g.font = '12px system-ui, sans-serif'; g.fillStyle = css('--muted');
+    g.font = '12px "DL Sans", system-ui, sans-serif'; g.fillStyle = css('--muted');
     g.fillText(T('copies after cycle {n} of {c}', { n: Math.min(cycles, n + (phase > 0.69 ? 1 : 0)), c: cycles }), x0, 48);
     const bars = Math.min(cycles, 40), bh = (h - 70) / bars;
     for (let i = 0; i < bars; i++) {
@@ -516,6 +556,21 @@
     $('fSite').value = keep.f || ''; $('rSite').value = keep.r || ''; $('pcrPol').value = keep.p || 'taq';
   }
 
+  function redrawAll() {
+    if (S.rec) { drawGC(); drawOrfMap(); }
+    if (S.program) drawProgram(S.program);
+    drawSim();
+    dataHooks.forEach(f => f());
+    if (window.DryLabGel && window.DryLabGel.redraw) window.DryLabGel.redraw();
+  }
+
+  /** Cloning helper: put enzyme sites on the primers for gene i and design them. */
+  function cloneGene(i, fEnz, rEnz) {
+    $('targetSelect').value = 'orf:' + i; onTarget(); setMode('exact');
+    $('fSite').value = fEnz || ''; $('rSite').value = rEnz || '';
+    show('primers'); design();
+  }
+
   // ------------------------------------------------------------ language
   function setLang(l) {
     I.setLang(l);
@@ -576,7 +631,7 @@
         (d.end3 >= 4 ? T("Warning: 3' ends pair, so a primer-dimer band (~40-60 bp) is likely.") : d.any >= 7 ? T('Some pairing in the middle: usually OK.') : T('Looks fine: no strong pairing.')) +
         '\n' + T('Tm: {a} °C and {b} °C (gap {g} °C)', { a: B.round(ta, 1), b: B.round(tb, 1), g: B.round(Math.abs(ta - tb), 1) });
     };
-    window.addEventListener('resize', () => { if (S.rec) { drawGC(); drawOrfMap(); } if (S.program) drawProgram(S.program); drawSim(); });
+    window.addEventListener('resize', redrawAll);
     // Android back button: return to the first tab before closing the app
     window.dryLabBack = () => {
       const cur = document.querySelector('.tab.active');
@@ -591,12 +646,14 @@
     if (saved) { $('seqInput').value = saved.length > 200000 ? saved.slice(0, 200000) : saved; analyze(saved, true); }
     if (lang === 'ta') I.apply(document.body);
     drawSim();
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
     const tab = store.get('tab', 'seq');
     setTimeout(() => { if (tab !== 'seq' && $('tab-' + tab)) show(tab); }, 0);
   }
 
   // shared with gel.js and lab.js
-  window.DryLab = { S, $, B, T, I, esc, fmtN, store, css, toast, copy, share, show, prepCanvas, conditions, programText,
-    onShow: (tab, f) => { showHooks[tab] = f; }, onLang: (f) => langHooks.push(f) };
+  window.DryLab = { S, $, B, T, I, esc, fmtN, store, css, toast, copy, share, show, prepCanvas, conditions, programText, cloneGene,
+    onShow: (tab, f) => { (showHooks[tab] = showHooks[tab] || []).push(f); }, onLang: (f) => langHooks.push(f),
+    onData: (f) => dataHooks.push(f), onGene: (f) => geneHooks.push(f) };
   document.addEventListener('DOMContentLoaded', init);
 })();

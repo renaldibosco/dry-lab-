@@ -80,10 +80,10 @@
     for (const chunk of text.split(/^\/\/\s*$/m)) {
       if (!/LOCUS\s/.test(chunk)) continue;
       const lines = chunk.split('\n');
-      let name = '', def = [], seq = [], features = [], cur = null, i = 0, inFeat = false;
+      let name = '', def = [], seq = [], features = [], cur = null, i = 0, inFeat = false, circular = false;
       for (; i < lines.length; i++) {
         const line = lines[i];
-        if (line.startsWith('LOCUS')) { name = (line.split(/\s+/)[1] || ''); inFeat = false; }
+        if (line.startsWith('LOCUS')) { name = (line.split(/\s+/)[1] || ''); inFeat = false; circular = /\scircular(\s|$)/i.test(line); }
         else if (line.startsWith('DEFINITION')) {
           def.push(line.slice(12).trim());
           while (i + 1 < lines.length && lines[i + 1].startsWith('            ')) def.push(lines[++i].trim());
@@ -124,6 +124,7 @@
       }
       const rec = finish(name || 'GenBank record', seq.join(''), 'GenBank', genes);
       rec.description = def.join(' ').replace(/\.$/, '');
+      rec.circular = circular;
       recs.push(rec);
     }
     return recs;
@@ -357,8 +358,10 @@
       o.sizeMin = Math.max(o.sizeMin, tl + 2 * o.lenMin);
       if (o.sizeMax < o.sizeMin) o.sizeMax = o.sizeMin + 600;
     }
-    const scanFrom = mode === 'flank' ? Math.max(0, rs - (o.sizeMax - (re - rs + 1))) : 0;
-    const scanTo = mode === 'flank' ? Math.min(L - 1, re + (o.sizeMax - (re - rs + 1))) : L - 1;
+    // 'inside': both primers inside the region (qPCR on a gene); 'anywhere': whole template
+    const inside = mode === 'inside' && region;
+    const scanFrom = mode === 'flank' ? Math.max(0, rs - (o.sizeMax - (re - rs + 1))) : inside ? Math.max(0, region.start - 1) : 0;
+    const scanTo = mode === 'flank' ? Math.min(L - 1, re + (o.sizeMax - (re - rs + 1))) : inside ? Math.min(L - 1, region.end - 1) : L - 1;
     if (L > 60000 && mode === 'anywhere') notes.push('Long sequence: choose a gene or region for faster, better results.');
 
     const quick = (p) => {                       // cheap filter before the slow checks
@@ -377,9 +380,9 @@
           const st = p - len + 1;                  // reverse primer ending at p
           if (st > re && st >= 0) { const s = revcomp(T.substr(st, len)); const q = quick(s); if (q !== null) rv.push({ pos: p, len, s, q }); }
         } else {
-          if (p + len <= L) { const s = T.substr(p, len); const q = quick(s); if (q !== null) fw.push({ pos: p, len, s, q }); }
+          if (p + len <= scanTo + 1) { const s = T.substr(p, len); const q = quick(s); if (q !== null) fw.push({ pos: p, len, s, q }); }
           const st = p - len + 1;
-          if (st >= 0) { const s = revcomp(T.substr(st, len)); const q = quick(s); if (q !== null) rv.push({ pos: p, len, s, q }); }
+          if (st >= scanFrom) { const s = revcomp(T.substr(st, len)); const q = quick(s); if (q !== null) rv.push({ pos: p, len, s, q }); }
         }
       }
     }
@@ -792,13 +795,210 @@
     return { items: R.map(([what, amt, unit]) => ({ what, amount: round(amt, amt < 10 ? 2 : 1), unit })), makeUpTo: volumeMl, dilute: name === 'TAE 50x' ? 50 : 10 };
   }
 
+  // ---------------------------------------------------------------- protein facts
+  // pK values of Bjellqvist et al. (as used by ExPASy ProtParam and Biopython), Kyte-Doolittle hydropathy.
+  const PK_POS = { Nterm: 7.5, K: 10.0, R: 12.0, H: 5.98 }, PK_NEG = { Cterm: 3.55, D: 4.05, E: 4.45, C: 9.0, Y: 10.0 };
+  const PK_CTERM = { D: 4.55, E: 4.75 }, PK_NTERM = { A: 7.59, M: 7.0, S: 6.93, P: 8.36, T: 6.82, V: 7.44, E: 7.7 };
+  const KD = { A: 1.8, R: -4.5, N: -3.5, D: -3.5, C: 2.5, Q: -3.5, E: -3.5, G: -0.4, H: -3.2, I: 4.5, L: 3.8, K: -3.9, M: 1.9,
+    F: 2.8, P: -1.6, S: -0.8, T: -0.7, W: -0.9, Y: -1.3, V: 4.2 };
+  function charge(p, ph) {
+    const c = {}; for (const a of p) c[a] = (c[a] || 0) + 1;
+    const pos = Object.assign({}, PK_POS, { Nterm: PK_NTERM[p[0]] || PK_POS.Nterm });
+    const neg = Object.assign({}, PK_NEG, { Cterm: PK_CTERM[p[p.length - 1]] || PK_NEG.Cterm });
+    let q = 0;
+    for (const k in pos) { const n = k === 'Nterm' ? 1 : (c[k] || 0); q += n * (1 / (1 + Math.pow(10, ph - pos[k]))); }
+    for (const k in neg) { const n = k === 'Cterm' ? 1 : (c[k] || 0); q -= n * (1 / (1 + Math.pow(10, neg[k] - ph))); }
+    return q;
+  }
+  function proteinFacts(p) {
+    p = p.replace(/[^ACDEFGHIKLMNPQRSTVWY]/g, '');
+    if (!p) return null;
+    let lo = 0, hi = 14, pi = 7;
+    for (let i = 0; i < 60; i++) { pi = (lo + hi) / 2; if (charge(p, pi) > 0) lo = pi; else hi = pi; }
+    const c = {}; for (const a of p) c[a] = (c[a] || 0) + 1;
+    const n = (a) => c[a] || 0;
+    const comp = Object.keys(AA_MASS).map(a => ({ aa: a, n: n(a), pct: round(100 * n(a) / p.length, 1) })).sort((x, y) => y.n - x.n);
+    return {
+      length: p.length, kDa: round(proteinWeight(p) / 1000, 2), pI: round(pi, 2), chargeAt7: round(charge(p, 7), 1),
+      extReduced: n('W') * 5500 + n('Y') * 1490, extOxidized: n('W') * 5500 + n('Y') * 1490 + Math.floor(n('C') / 2) * 125,
+      gravy: round(p.split('').reduce((s, a) => s + KD[a], 0) / p.length, 3),
+      positive: n('K') + n('R'), negative: n('D') + n('E'), composition: comp,
+    };
+  }
+  /** Kyte-Doolittle hydropathy along a protein (window of 9): above 0 = water-hating (membrane-like). */
+  function hydropathy(p, win) {
+    win = win || 9; p = p.replace(/[^ACDEFGHIKLMNPQRSTVWY]/g, '');
+    const out = [];
+    for (let i = 0; i + win <= p.length; i++) { let s = 0; for (let k = 0; k < win; k++) s += KD[p[i + k]]; out.push({ pos: i + 1 + (win >> 1), v: s / win }); }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- compare a sequencing result with the expected DNA
+  /**
+   * Lines up a read (for example a Sanger result) against the expected sequence. The read is aligned end to end,
+   * the expected sequence may stick out on both sides. Tries the read as it is and reverse-complemented.
+   * Returns identity, where it covers the reference, and every difference.
+   */
+  function compareSeqs(ref, read) {
+    ref = cleanSequence(ref).seq; read = cleanSequence(read).seq;
+    if (!ref || !read) return null;
+    if (read.length > 3000) return { tooLong: true };
+    const rc = revcomp(read);
+    let win = [0, ref.length];
+    if (ref.length * read.length > 4e6) {                // long reference: find where the read sits first
+      const a = locate(ref, read), b = locate(ref, rc), hit = !a ? b : !b ? a : a.votes >= b.votes ? a : b;
+      if (!hit) return { notFound: true };
+      win = [Math.max(0, hit.offset - 300), Math.min(ref.length, hit.offset + read.length + 300)];
+    }
+    const sub = ref.slice(win[0], win[1]);
+    const a = align2(sub, read), b = align2(sub, rc);
+    const best = b.score > a.score ? Object.assign(b, { reversed: true }) : Object.assign(a, { reversed: false });
+    if (win[0]) { best.start += win[0]; best.end += win[0]; best.diffs.forEach(d => { d.pos += win[0]; }); }
+    best.refStartPos = best.start;
+    return best;
+  }
+  /** Rough place of a read in a long reference: votes of shared 12-base words along the same diagonal. */
+  function locate(ref, read) {
+    const k = 12, words = new Map(), votes = new Map();
+    for (let i = 0; i + k <= read.length; i += 4) { const w = read.substr(i, k); if (!w.includes('N') && !words.has(w)) words.set(w, i); }
+    for (let j = 0; j + k <= ref.length; j++) {
+      const i = words.get(ref.substr(j, k));
+      if (i !== undefined) { const d = Math.round((j - i) / 25); votes.set(d, (votes.get(d) || 0) + 1); }
+    }
+    let best = null;
+    for (const [d, v] of votes) if (!best || v > best.votes) best = { offset: Math.max(0, d * 25), votes: v };
+    return best && best.votes >= 3 ? best : null;
+  }
+  function align2(ref, read) {
+    const MATCH = 2, MIS = -3, GAP = -5, n = ref.length, m = read.length;
+    const W = n + 1, dir = new Uint8Array((m + 1) * W);    // 1 diag, 2 up (gap in ref = insertion in read), 3 left (deletion)
+    let prev = new Float64Array(W), cur = new Float64Array(W);
+    for (let j = 0; j <= n; j++) prev[j] = 0;               // free start in the reference
+    for (let i = 1; i <= m; i++) {
+      cur[0] = i * GAP; dir[i * W] = 2;
+      const rc = read[i - 1];
+      for (let j = 1; j <= n; j++) {
+        const fc = ref[j - 1];
+        const sc = (rc === 'N' || fc === 'N') ? 0 : rc === fc ? MATCH : MIS;
+        let v = prev[j - 1] + sc, d = 1;
+        const up = prev[j] + GAP, left = cur[j - 1] + GAP;
+        if (up > v) { v = up; d = 2; }
+        if (left > v) { v = left; d = 3; }
+        cur[j] = v; dir[i * W + j] = d;
+      }
+      [prev, cur] = [cur, prev];
+    }
+    let bj = 0; for (let j = 1; j <= n; j++) if (prev[j] > prev[bj]) bj = j;   // free end in the reference
+    const score = prev[bj];
+    let i = m, j = bj; const top = [], bot = [];
+    while (i > 0) {
+      const d = dir[i * W + j];
+      if (d === 1 && j > 0) { top.push(ref[j - 1]); bot.push(read[i - 1]); i--; j--; }
+      else if (d === 3 && j > 0) { top.push(ref[j - 1]); bot.push('-'); j--; }
+      else { top.push('-'); bot.push(read[i - 1]); i--; }
+    }
+    top.reverse(); bot.reverse();
+    const start = j + 1, end = bj;
+    const diffs = []; let pos = start - 1, same = 0, ambiguous = 0;
+    for (let k = 0; k < top.length; k++) {
+      const t = top[k], r = bot[k];
+      if (t !== '-') pos++;
+      if (t === r) same++;
+      else if (r === 'N' || t === 'N') ambiguous++;
+      else if (t === '-') diffs.push({ type: 'insertion', pos, ref: '-', read: r });
+      else if (r === '-') diffs.push({ type: 'deletion', pos, ref: t, read: '-' });
+      else diffs.push({ type: 'change', pos, ref: t, read: r });
+    }
+    return { score, start, end, top: top.join(''), bottom: bot.join(''), identity: round(100 * same / top.length, 2),
+      length: top.length, diffs, ambiguous };
+  }
+
+  // ---------------------------------------------------------------- mutation primers (site-directed mutagenesis)
+  // Most used E. coli codon for each amino acid (for the new codon).
+  const BEST_CODON = { A: 'GCG', R: 'CGT', N: 'AAC', D: 'GAT', C: 'TGC', Q: 'CAG', E: 'GAA', G: 'GGC', H: 'CAT', I: 'ATT', L: 'CTG',
+    K: 'AAA', M: 'ATG', F: 'TTT', P: 'CCG', S: 'AGC', T: 'ACC', W: 'TGG', Y: 'TAT', V: 'GTG', '*': 'TAA' };
+  /**
+   * Primers that change one amino acid. context = DNA in the gene's direction; cdsStart = 0-based index of the
+   * gene's A of ATG inside context; aaPos = amino acid number (1 = first). Overlapping primer pair, mutation in the
+   * middle, grown until Tm (mismatch formula) reaches 78 C, ending on G or C when possible.
+   */
+  function mutagenesis(context, cdsStart, aaPos, newAA) {
+    const at = cdsStart + (aaPos - 1) * 3, oldCodon = context.substr(at, 3);
+    if (oldCodon.length < 3) return { error: 'outside' };
+    const oldAA = CODON[oldCodon] || 'X';
+    let codon = BEST_CODON[newAA];
+    // keep as many original bases as possible: choose the codon for newAA closest to the old one
+    for (const c of Object.keys(CODON)) if (CODON[c] === newAA) {
+      const d = (x) => [0, 1, 2].filter(k => x[k] !== oldCodon[k]).length;
+      if (d(c) < d(codon)) codon = c;
+    }
+    const changed = [0, 1, 2].filter(k => codon[k] !== oldCodon[k]).length;
+    if (!changed) return { error: 'same', oldCodon, oldAA };
+    const mutant = context.slice(0, at) + codon + context.slice(at + 3);
+    let best = null;
+    for (const minFlank of [10, 6]) {
+      for (let len = 25; len <= 45; len++) {
+        for (let a = at + 3 + minFlank - len; a <= at - minFlank; a++) {
+          const b = a + len;
+          if (a < 0 || b > mutant.length) continue;
+          const p = mutant.slice(a, b), g = gcPercent(p);
+          const tmQC = 81.5 + 0.41 * g - 675 / len - 100 * changed / len;
+          const clamp = /[GC]$/.test(p) && /^[GC]/.test(p);
+          const offCentre = Math.abs((at - a) - (b - at - 3));
+          const score = (tmQC >= 78 ? 0 : (78 - tmQC) * 3) + (clamp ? 0 : 2) + len * 0.05 + offCentre * 0.08;
+          if (!best || score < best.score) best = { score, seq: p, start: a, len, tm: round(tmQC, 1), gc: round(g, 1), clamp, shortFlank: minFlank < 10 };
+        }
+      }
+      if (best) break;
+    }
+    if (!best) return { error: 'edge', oldCodon, oldAA };
+    return { oldCodon, newCodon: codon, oldAA, newAA, changed, forward: best.seq, reverse: revcomp(best.seq),
+      length: best.len, tm: best.tm, gc: best.gc, clamp: best.clamp, shortFlank: best.shortFlank,
+      changedAt: [0, 1, 2].filter(k => codon[k] !== oldCodon[k]).map(k => at + k - best.start), mutantProtein: translate(mutant.slice(cdsStart), 1, true) };
+  }
+
+  // ---------------------------------------------------------------- cloning helper
+  const POPULAR = ['EcoRI', 'BamHI', 'HindIII', 'XhoI', 'NdeI', 'NcoI', 'NotI', 'XbaI', 'SalI', 'KpnI', 'SacI', 'NheI', 'PstI', 'SpeI', 'BglII', 'SphI', 'SmaI', 'EcoRV'];
+  // Pairs that match the cloning sites of common vectors (pET, pGEX, pcDNA, pUC...), most used first
+  const CLASSIC_PAIRS = [['NdeI', 'XhoI'], ['NcoI', 'XhoI'], ['NdeI', 'BamHI'], ['BamHI', 'XhoI'], ['EcoRI', 'XhoI'], ['NheI', 'XhoI'],
+    ['BamHI', 'HindIII'], ['EcoRI', 'HindIII'], ['NcoI', 'HindIII'], ['NdeI', 'HindIII'], ['EcoRI', 'BamHI'], ['BamHI', 'NotI'], ['EcoRI', 'NotI'],
+    ['KpnI', 'XhoI'], ['NheI', 'HindIII'], ['XbaI', 'HindIII'], ['KpnI', 'BamHI'], ['SacI', 'HindIII'], ['BglII', 'XhoI'], ['XbaI', 'XhoI']];
+  /** Enzyme pairs for directional cloning: neither enzyme may cut inside the gene. First = 5' (forward primer) end. */
+  function cloningPairs(gene) {
+    const ok = POPULAR.filter(e => !gene.includes(ENZYMES[e]) && !gene.includes(revcomp(ENZYMES[e])));
+    const pairs = CLASSIC_PAIRS.filter(p => ok.includes(p[0]) && ok.includes(p[1]));
+    for (let i = 0; i < ok.length && pairs.length < 6; i++) for (let j = i + 1; j < ok.length && pairs.length < 6; j++)
+      if (!pairs.some(p => (p[0] === ok[i] && p[1] === ok[j]) || (p[0] === ok[j] && p[1] === ok[i]))) pairs.push([ok[i], ok[j]]);
+    return { usable: ok, cutsInside: POPULAR.filter(e => !ok.includes(e)), pairs: pairs.slice(0, 6).map(p => ({ forward: p[0], reverse: p[1] })) };
+  }
+
+  // ---------------------------------------------------------------- qPCR maths
+  /** Standard curve: points [{qty, ct}] -> slope, R2, efficiency. Good PCR: slope about -3.32, efficiency 90-110%. */
+  function qpcrCurve(points) {
+    const pts = points.filter(p => p.qty > 0 && isFinite(p.ct));
+    if (pts.length < 3) return null;
+    const xs = pts.map(p => Math.log10(p.qty)), ys = pts.map(p => p.ct), n = pts.length;
+    const mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+    const slope = sxy / sxx, intercept = my - slope * mx, r2 = (sxy * sxy) / (sxx * syy);
+    const eff = (Math.pow(10, -1 / slope) - 1) * 100;
+    return { slope: round(slope, 3), intercept: round(intercept, 2), r2: round(r2, 4), efficiency: round(eff, 1), n };
+  }
+  /** Relative expression by the 2^-ddCt (Livak) method. */
+  function ddct(ctTargetSample, ctRefSample, ctTargetControl, ctRefControl) {
+    const dS = ctTargetSample - ctRefSample, dC = ctTargetControl - ctRefControl, dd = dS - dC;
+    return { dctSample: round(dS, 2), dctControl: round(dC, 2), ddct: round(dd, 2), fold: round(Math.pow(2, -dd), 3) };
+  }
+
   function round(x, d) { const f = Math.pow(10, d || 0); return Math.round(x * f) / f; }
 
   const Bio = { CODON, ENZYMES, POLYMERASES, complement, revcomp, transcribe, translate, cleanSequence,
     parseInput, stats, gcPercent, gcWindow, findOrfs, proteinWeight, tm, tmWallace, tmProduct, dimer,
     hairpin, checkPrimer, defaultDesign, designPrimers, pcrProgram, masterMix, cutSites, findMotif, round,
     CUT, LADDERS, AGAROSE, digest, migration, bestAgarose, sizeFromPosition, findBands, fitLadder, dilution, gramsFor,
-    nucleicConc, copies, agaroseGrams, bufferRecipe };
+    nucleicConc, copies, agaroseGrams, bufferRecipe,
+    proteinFacts, hydropathy, compareSeqs, mutagenesis, BEST_CODON, cloningPairs, qpcrCurve, ddct };
   root.Bio = Bio;
   if (typeof module !== 'undefined' && module.exports) module.exports = Bio;
 })(typeof window !== 'undefined' ? window : globalThis);

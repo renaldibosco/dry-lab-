@@ -23,9 +23,20 @@ import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
+
 /**
  * Dry Lab: the whole app (screens and biology engine) lives in assets/www and runs offline.
- * This class only shows it full screen and connects phone features: opening files, sharing, copying.
+ * This class only shows it full screen and connects phone features: opening files, sharing, copying,
+ * and (only when the user presses Ask in the optional AI helper) one HTTPS request to the AI service they chose.
  */
 public class MainActivity extends Activity {
     private static final int PICK_FILE = 42;
@@ -164,7 +175,15 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
-    /** Called from the page as window.Android.share(...) and window.Android.copy(...). */
+    private static String readAll(InputStream in) throws java.io.IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) > 0 && out.size() < 4_000_000) out.write(buf, 0, n);
+        return out.toString("UTF-8");
+    }
+
+    /** Called from the page as window.Android.share(...), copy(...) and request(...). */
     private class Bridge {
         @JavascriptInterface
         public void share(String title, String text) {
@@ -181,6 +200,47 @@ public class MainActivity extends Activity {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Dry Lab", text));
             });
+        }
+
+        /**
+         * One HTTPS request for the optional AI helper (the page cannot call these services directly).
+         * The answer comes back as window.DryLabAI.done(id, status, text). Only https:// addresses are allowed.
+         */
+        @JavascriptInterface
+        public void request(final String id, final String method, final String url, final String headersJson, final String body) {
+            new Thread(() -> {
+                int code = 0;
+                String text;
+                HttpURLConnection c = null;
+                try {
+                    if (url == null || !url.startsWith("https://")) throw new IllegalArgumentException("Only https:// addresses are allowed");
+                    c = (HttpURLConnection) new URL(url).openConnection();
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(120000);
+                    c.setRequestMethod("POST".equals(method) ? "POST" : "GET");
+                    JSONObject h = new JSONObject(headersJson == null || headersJson.isEmpty() ? "{}" : headersJson);
+                    for (Iterator<String> it = h.keys(); it.hasNext(); ) {
+                        String k = it.next();
+                        c.setRequestProperty(k, h.getString(k));
+                    }
+                    if ("POST".equals(method) && body != null) {
+                        byte[] out = body.getBytes(StandardCharsets.UTF_8);
+                        c.setDoOutput(true);
+                        c.setFixedLengthStreamingMode(out.length);
+                        try (OutputStream os = c.getOutputStream()) { os.write(out); }
+                    }
+                    code = c.getResponseCode();
+                    InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                    text = in == null ? "" : readAll(in);
+                } catch (Exception e) {
+                    code = 0;
+                    text = e.getClass().getSimpleName() + (e.getMessage() != null ? ": " + e.getMessage() : "");
+                } finally {
+                    if (c != null) c.disconnect();
+                }
+                final String js = "window.DryLabAI && window.DryLabAI.done(" + JSONObject.quote(id) + "," + code + "," + JSONObject.quote(text) + ")";
+                runOnUiThread(() -> { if (web != null) web.evaluateJavascript(js, null); });
+            }).start();
         }
     }
 }

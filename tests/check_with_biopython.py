@@ -3,6 +3,7 @@ Run:  pip install biopython   then   python tests/check_with_biopython.py   (nee
 import json, random, subprocess, os
 from Bio.SeqUtils import MeltingTemp as mt
 from Bio.Seq import Seq
+from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BIO = os.path.join(HERE, "..", "app", "src", "main", "assets", "www", "js", "bio.js")
@@ -11,13 +12,14 @@ primers = ["".join(rng.choice("ACGT") for _ in range(rng.randint(15, 32))) for _
 primers += ["GCGCGCATATAT", "ATGGCTAGCAAGGAGGAA", "TTAGGATCCTCAGTTGTA", "GAATTC"]
 conds = [dict(na=50, mg=1.5, dntp=0.2, primerNM=250), dict(na=50, mg=0, dntp=0, primerNM=50), dict(na=100, mg=2.5, dntp=0.8, primerNM=500)]
 seqs = ["".join(rng.choice("ACGT") for _ in range(rng.randint(300, 3000))) for _ in range(25)]
+prots = ["".join(rng.choice("ACDEFGHIKLMNPQRSTVWY") for _ in range(rng.randint(20, 600))) for _ in range(200)]
 
 js = f"""
 const B = require({json.dumps(BIO)});
-const primers = {json.dumps(primers)}, conds = {json.dumps(conds)}, seqs = {json.dumps(seqs)};
+const primers = {json.dumps(primers)}, conds = {json.dumps(conds)}, seqs = {json.dumps(seqs)}, prots = {json.dumps(prots)};
 const out = {{ tm: conds.map(c => primers.map(p => B.tm(p, c))),
   orfs: seqs.map(s => B.findOrfs(s, {{minAA: 30, partial: false}}).map(o => [o.strand, o.start, o.end, o.protein])),
-  gc: seqs.map(s => B.stats(s).gc) }};
+  gc: seqs.map(s => B.stats(s).gc), prot: prots.map(p => B.proteinFacts(p)) }};
 console.log(JSON.stringify(out));
 """
 res = json.loads(subprocess.run(["node", "-e", js], capture_output=True, text=True, check=True).stdout)
@@ -51,5 +53,17 @@ n = sum(len(o) for o in res["orfs"])
 print(f"ORFs: {n} genes in {len(seqs)} sequences match Biopython translation and positions: {ok}")
 gc_ok = all(abs(round(100 * (s.count('G') + s.count('C')) / len(s), 1) - g) < 1e-9 for s, g in zip(seqs, res["gc"]))
 print(f"GC%: match: {gc_ok}")
-assert worst < 0.01 and ok and gc_ok, "MISMATCH"
+# Protein facts vs ProtParam. Biopython only searches pI between 4.05 and 12, so proteins outside that range are skipped for pI.
+pw = {"pI": 0, "kDa": 0, "gravy": 0, "ext": 0}
+for p, m in zip(prots, res["prot"]):
+    a = ProteinAnalysis(p)
+    pi = a.isoelectric_point()
+    if 4.06 < pi < 11.99: pw["pI"] = max(pw["pI"], abs(pi - m["pI"]))
+    pw["kDa"] = max(pw["kDa"], abs(a.molecular_weight() / 1000 - m["kDa"]))
+    pw["gravy"] = max(pw["gravy"], abs(a.gravy() - m["gravy"]))
+    red, ox = a.molar_extinction_coefficient()
+    pw["ext"] = max(pw["ext"], abs(red - m["extReduced"]), abs(ox - m["extOxidized"]))
+print(f"Protein facts: {len(prots)} proteins, biggest differences vs ProtParam: " + ", ".join(f"{k} {v:.4f}" for k, v in pw.items()))
+prot_ok = pw["pI"] <= 0.01 and pw["kDa"] <= 0.006 and pw["gravy"] <= 0.001 and pw["ext"] == 0
+assert worst < 0.01 and ok and gc_ok and prot_ok, "MISMATCH"
 print("ALL GOOD")

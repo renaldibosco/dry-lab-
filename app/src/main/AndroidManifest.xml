@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No internet permission: Dry Lab works fully offline and sends nothing anywhere. -->
+    <!-- Internet is used ONLY by the optional "Ask AI" helper, when the user presses Ask with their own key.
+         Everything else works fully offline and sends nothing anywhere. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Lets the app see the phone's camera app, to take gel photos (Android 11+ package visibility). -->
     <queries>
         <intent>

@@ -68,12 +68,12 @@
     for (let i = 0; i < 900; i++) { g.globalAlpha = r() * 0.05; g.fillRect(left + r() * gw, top + r() * gh, 1.2, 1.2); }
     g.globalAlpha = 1;
     // electrodes
-    g.fillStyle = D.css('--muted'); g.font = '600 13px system-ui, sans-serif';
+    g.fillStyle = D.css('--muted'); g.font = '600 13px "DL Sans", system-ui, sans-serif';
     g.fillText('−', left - 16, top + 12); g.fillText('+', left - 16, top + gh - 2);
     G.lanes.forEach((lane, i) => {
       const cx = left + laneW * (i + 0.5), bw = laneW * 0.62;
       g.fillStyle = '#05070d'; g.fillRect(cx - bw / 2, wellY - 6, bw, 6);       // well
-      g.fillStyle = D.css('--ink'); g.font = '600 11px system-ui, sans-serif';
+      g.fillStyle = D.css('--ink'); g.font = '600 11px "DL Sans", system-ui, sans-serif';
       const lab = lane.name.length > 9 ? lane.name.slice(0, 8) + '…' : lane.name;
       g.fillText(lab, cx - g.measureText(lab).width / 2, top - 8);
       for (const b of lane.bands) {
@@ -89,7 +89,7 @@
     });
     // ladder labels to the left
     const L = G.lanes[0];
-    g.font = '10px system-ui, sans-serif'; g.fillStyle = D.css('--muted');
+    g.font = '10px "DL Sans", system-ui, sans-serif'; g.fillStyle = D.css('--muted');
     let lastY = -99;
     for (const b of L.bands) {
       const y = wellY + B.migration(b.bp, G.pct) * runH;
@@ -98,7 +98,7 @@
       g.fillText(t, left - 6 - g.measureText(t).width, y + 3);
       lastY = y;
     }
-    g.fillStyle = D.css('--muted'); g.font = '11px system-ui, sans-serif';
+    g.fillStyle = D.css('--muted'); g.font = '11px "DL Sans", system-ui, sans-serif';
     const foot = T('{p}% agarose', { p: G.pct });
     g.fillText(foot, left + gw - g.measureText(foot).width, h - 5);
     // legend
@@ -211,7 +211,7 @@
     g.drawImage(G.src, 0, 0, w, h);
     const sx = w / G.src.width, sy = h / G.src.height;
     const label = (txt, x, y, col, alignRight) => {
-      g.font = '600 11px system-ui, sans-serif';
+      g.font = '600 11px "DL Sans", system-ui, sans-serif';
       const tw = g.measureText(txt).width, px = alignRight ? x - tw - 10 : x + 8;
       g.fillStyle = 'rgba(0,0,0,0.65)'; g.fillRect(px - 3, y - 9, tw + 6, 14);
       g.fillStyle = col; g.fillText(txt, px, y + 2);
@@ -296,6 +296,6 @@
     window.addEventListener('resize', () => { if (G.lanes) draw(); if (G.src) drawPhoto(); });
   }
 
-  window.DryLabGel = { run, G, draw };
+  window.DryLabGel = { run, G, draw, photoText, redraw: () => { if (G.lanes) draw(); if (G.src) drawPhoto(); } };
   document.addEventListener('DOMContentLoaded', init);
 })();

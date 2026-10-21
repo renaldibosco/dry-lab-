@@ -55,6 +55,13 @@
       <canvas id="gcChart" height="150"></canvas>
       <p class="learn">Peaks above the red line (65%) are GC-rich spots. They are harder to copy by PCR and may need 98 °C, DMSO or betaine.</p>
     </div>
+    <div class="card hidden" id="mapCard">
+      <div class="title-row"><h3>DNA map</h3>
+        <div class="seg mini" id="mapSeg"><button data-map="circ">Circular</button><button data-map="lin">Linear</button></div></div>
+      <canvas id="dnaMap" height="320"></canvas>
+      <div id="mapLegend"></div>
+      <p class="learn">Arrows are genes, pointing the way they are read. Enzymes that cut only once are named: they are the useful ones for opening a plasmid. Blue bars show more GC than average, orange bars less. Plasmids are circles: choose Circular for them.</p>
+    </div>
     <button class="btn primary wide" data-go="genes">Find genes (start and stop codons) &rarr;</button>
   </div>
 </section>
@@ -75,6 +82,7 @@
   <div id="genesEmpty" class="card muted">Analyze a sequence first.</div>
   <div id="orfMapCard" class="card hidden">
     <h3 id="orfCount"></h3>
+    <p id="orfNote" class="warn hidden"></p>
     <canvas id="orfMap" height="90"></canvas>
     <p class="learn">Arrows on top read left to right (+ strand). Arrows below read right to left (- strand).</p>
   </div>
@@ -98,6 +106,7 @@
       <button data-mode="exact" class="on">Whole gene, exact ends</button>
       <button data-mode="flank">Around it</button>
       <button data-mode="anywhere">Best anywhere</button>
+      <button data-mode="qpcr">qPCR</button>
     </div>
     <p class="learn" id="modeHelp"></p>
     <details>
@@ -263,9 +272,45 @@
       <button data-calc="conc">DNA conc.</button>
       <button data-calc="copy">Copies</button>
       <button data-calc="gel">Agarose</button>
+      <button data-calc="qcurve">qPCR curve</button>
+      <button data-calc="ddct">ΔΔCt</button>
       <button data-calc="buf">Buffers</button>
     </div>
     <div id="calcBox"></div>
+  </div>
+
+  <div class="card" id="cmpCard">
+    <h2>Check my sequencing result</h2>
+    <p class="learn">Paste the DNA you got back from Sanger sequencing. Dry Lab lines it up with what you expected, lists every difference, and says what each one does to the protein.</p>
+    <label>Expected DNA<select id="cmpRef"></select></label>
+    <textarea id="cmpRefText" class="hidden" rows="3" spellcheck="false" placeholder="Paste the expected DNA"></textarea>
+    <label>Sequencing result<textarea id="cmpRead" rows="4" spellcheck="false" placeholder="Paste your sequencing result (FASTA or plain text)"></textarea></label>
+    <button class="btn primary" id="cmpBtn">Compare</button>
+    <div id="cmpOut"></div>
+  </div>
+
+  <div class="card" id="aiCard">
+    <div class="title-row"><h2>Ask AI</h2><span class="tag">online · optional</span></div>
+    <p class="learn">Ask about your PCR, primers or gel in English or Tamil. This is the only part of Dry Lab that uses the internet, and only when you press Ask.</p>
+    <p class="muted" id="aiState"></p>
+    <button class="btn small hidden" id="aiEdit">Change AI settings</button>
+    <div id="aiSetup">
+      <label>AI service<select id="aiProv">
+        <option value="gemini" data-t>Google Gemini (has a free tier)</option>
+        <option value="claude" data-t>Anthropic Claude</option>
+        <option value="openai" data-t>Other (OpenAI-compatible)</option></select></label>
+      <label id="aiBaseRow" class="hidden">Server address<input id="aiBase" placeholder="https://api.example.com/v1" spellcheck="false" autocapitalize="off"></label>
+      <label>Your API key<input id="aiKey" type="password" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+      <label>Model<input id="aiModel" list="aiModels" spellcheck="false" autocapitalize="off"><datalist id="aiModels"></datalist></label>
+      <p class="muted" id="aiKeyHelp"></p>
+      <div class="row wrap"><button class="btn small primary" id="aiSave">Save and check key</button><button class="btn small ghost" id="aiForget">Forget key</button></div>
+      <p class="warn">Use only your own key. Keys copied from other people's code are not yours to use, and they are usually blocked quickly.</p>
+    </div>
+    <div id="aiChat"></div>
+    <textarea id="aiQ" rows="3" placeholder="e.g. Why do I see a smear on my gel?"></textarea>
+    <label class="check"><input type="checkbox" id="aiCtx" checked> Attach my current results (sequence summary, primers, PCR program, gel reading)</label>
+    <div class="row wrap"><button class="btn primary" id="aiAsk">Ask</button><button class="btn ghost small" id="aiNew">New chat</button></div>
+    <p class="muted small">Your key is saved only on this phone. Questions go straight from your phone to the service you chose. AI can be wrong: check important steps with your teacher or a protocol.</p>
   </div>
 
   <div class="card">
@@ -296,7 +341,7 @@
     <button class="btn" id="dimBtn">Check pair</button>
     <pre id="dimOut" class="out"></pre>
   </div>
-  <p class="about muted">Dry Lab 1.1. Works offline. Calculations: nearest-neighbour Tm (SantaLucia 1998), checked against Biopython. Planning tool only: always confirm in the lab.</p>
+  <p class="about muted">Dry Lab 1.2. Works offline (only Ask AI uses the internet). Calculations: nearest-neighbour Tm (SantaLucia 1998) and protein facts (ExPASy ProtParam), checked against Biopython. Planning tool only: always confirm in the lab.</p>
 </section>
 </main>
 
@@ -317,5 +362,6 @@
 <script src="js/app.js"></script>
 <script src="js/gel.js"></script>
 <script src="js/lab.js"></script>
+<script src="js/tools.js"></script>
 </body>
 </html>

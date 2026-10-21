@@ -33,7 +33,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Name the APK
-        run: cp app/build/outputs/apk/release/app-release.apk DryLab-1.1.${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk DryLab-1.2.${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -44,7 +44,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v1.1.${{ github.run_number }}" "DryLab-1.1.${{ github.run_number }}.apk" \
-            --title "Dry Lab 1.1.${{ github.run_number }}" \
+          gh release create "v1.2.${{ github.run_number }}" "DryLab-1.2.${{ github.run_number }}.apk" \
+            --title "Dry Lab 1.2.${{ github.run_number }}" \
             --notes "Android app. Download the .apk on your phone and open it to install (allow installs from this source when asked)." \
             --latest

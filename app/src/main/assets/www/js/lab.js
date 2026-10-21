@@ -233,6 +233,40 @@
       html: () => `<div class="grid2">${field('gP', 'Agarose %', 1)}${field('gV', 'Gel volume (mL)', 50)}</div>`,
       calc: () => `<div class="big">${f(B.agaroseGrams(num('gP'), num('gV')), 2)} g ${T('agarose')}</div><p>${T('Melt in {v} mL of 1x TAE or TBE until fully clear, cool to about 55 °C, add the DNA stain, pour, and put the comb in.', { v: f(num('gV'), 0) })}</p>`,
     },
+    qcurve: {
+      html: () => `<p class="muted">${T('One dilution per line: amount (copies or ng), then its Ct. At least 3 lines.')}</p>
+        <textarea id="qPts" rows="5" spellcheck="false">1000000, 15.1\n100000, 18.4\n10000, 21.8\n1000, 25.1\n100, 28.5</textarea>
+        ${field('qUnk', 'Unknown sample Ct (optional)', '')}`,
+      calc: () => {
+        const pts = $('qPts').value.split('\n').map(l => l.split(/[,;\s\t]+/).filter(Boolean).map(Number)).filter(a => a.length >= 2 && a[0] > 0 && isFinite(a[1])).map(a => ({ qty: a[0], ct: a[1] }));
+        const r = B.qpcrCurve(pts);
+        if (!r) return T('Enter at least 3 lines like: 10000, 21.8');
+        const effOk = r.efficiency >= 90 && r.efficiency <= 110, r2Ok = r.r2 >= 0.98, unk = num('qUnk');
+        const q = unk === null ? null : Math.pow(10, (unk - r.intercept) / r.slope);
+        return `<div class="big">${T('Efficiency')} ${f(r.efficiency, 1)}%</div>
+          <p>${T('Slope')} ${f(r.slope, 3)} · R² ${f(r.r2, 4)} · ${T('intercept')} ${f(r.intercept, 2)}</p>
+          ${qChart(pts, r)}
+          <p class="${effOk ? 'okline' : 'warn'}">${effOk ? T('Efficiency is in the good range (90-110%).') : r.efficiency < 90 ? T('Efficiency is low: check primers, inhibitors in the sample, or pipetting of the dilutions.') : T('Efficiency is above 110%: often primer-dimers or pipetting errors in the dilution series.')}</p>
+          <p class="${r2Ok ? 'okline' : 'warn'}">${r2Ok ? T('R² is 0.98 or more: the points lie on a straight line.') : T('R² is below 0.98: one dilution may be off. Repeat it or leave it out.')}</p>
+          ${q !== null ? `<p>${T('Unknown sample: about {q} (same units as your standards).', { q: q >= 1e4 ? q.toExponential(2).replace('e+', ' x 10^') : f(q, 2) })}</p>` : ''}
+          <p class="learn">${T('A perfect PCR doubles the DNA every cycle: slope -3.32 and efficiency 100%. Efficiency = 10^(-1/slope) - 1.')}</p>`;
+      },
+    },
+    ddct: {
+      html: () => `<p class="muted">${T('Ct values (averages of your repeats). Reference gene = a housekeeping gene such as GAPDH or 16S rRNA.')}</p><div class="grid2">
+        ${field('xTS', 'Target gene, treated', 22)}${field('xRS', 'Reference gene, treated', 18)}
+        ${field('xTC', 'Target gene, control', 25)}${field('xRC', 'Reference gene, control', 18)}</div>`,
+      calc: () => {
+        const v = ['xTS', 'xRS', 'xTC', 'xRC'].map(num);
+        if (v.some(x => x === null)) return T('Fill in all four Ct values.');
+        const r = B.ddct(v[0], v[1], v[2], v[3]);
+        const up = r.fold >= 1;
+        return `<div class="big">${f(r.fold, 2)}x</div>
+          <p>${up ? T('The target gene is about {n} times higher in the treated sample.', { n: f(r.fold, 1) }) : T('The target gene is about {n} times lower in the treated sample.', { n: f(1 / r.fold, 1) })}</p>
+          <p class="muted">ΔCt ${T('treated')} ${f(r.dctSample, 2)} · ΔCt ${T('control')} ${f(r.dctControl, 2)} · ΔΔCt ${f(r.ddct, 2)}</p>
+          <p class="learn">${T('Livak 2^-ΔΔCt method. It assumes both genes amplify with about 100% efficiency: check that with a standard curve first.')}</p>`;
+      },
+    },
     buf: {
       html: () => `<div class="grid2"><label>${T('Buffer')}<select id="bName"><option>TAE 50x</option><option>TBE 10x</option></select></label>${field('bV', 'Volume (mL)', 1000)}</div>`,
       calc: () => {
@@ -242,13 +276,26 @@
       },
     },
   };
+  function qChart(pts, r) {
+    const W = 300, H = 150, P = 32, xs = pts.map(p => Math.log10(p.qty)), ys = pts.map(p => p.ct);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys) - 1, y1 = Math.max(...ys) + 1;
+    const X = (v) => P + (W - P - 8) * (v - x0) / Math.max(1e-9, x1 - x0), Y = (v) => 8 + (H - P - 8) * (1 - (v - y0) / Math.max(1e-9, y1 - y0));
+    const dots = pts.map((p, i) => `<circle cx="${X(xs[i]).toFixed(1)}" cy="${Y(ys[i]).toFixed(1)}" r="4"/>`).join('');
+    return `<svg class="qchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Standard curve">
+      <line class="ax" x1="${P}" y1="${H - P}" x2="${W - 8}" y2="${H - P}"/><line class="ax" x1="${P}" y1="8" x2="${P}" y2="${H - P}"/>
+      <line class="fit" x1="${X(x0)}" y1="${Y(r.slope * x0 + r.intercept)}" x2="${X(x1)}" y2="${Y(r.slope * x1 + r.intercept)}"/>${dots}
+      <text x="${P}" y="${H - P + 14}">10^${f(x0, 1)}</text><text x="${W - 8}" y="${H - P + 14}" text-anchor="end">10^${f(x1, 1)}</text>
+      <text x="${W / 2}" y="${H - 4}" text-anchor="middle">${T('amount (log scale)')}</text>
+      <text x="4" y="${Y(y1) + 4}">${f(y1, 0)}</text><text x="4" y="${Y(y0)}">${f(y0, 0)}</text><text x="4" y="${H / 2 - 10}">Ct</text></svg>`;
+  }
+
   let calcKey = 'dil';
   function showCalc(k) {
     calcKey = k;
     document.querySelectorAll('#calcSeg button').forEach(b => b.classList.toggle('on', b.dataset.calc === k));
     $('calcBox').innerHTML = CALCS[k].html() + '<div id="calcOut" class="calcout"></div>';
     const upd = () => { $('calcOut').innerHTML = CALCS[k].calc(); };
-    $('calcBox').querySelectorAll('input,select').forEach(el => el.addEventListener('input', upd));
+    $('calcBox').querySelectorAll('input,select,textarea').forEach(el => el.addEventListener('input', upd));
     if ($('mChem')) $('mChem').addEventListener('change', () => { if ($('mChem').value) { $('mMW').value = $('mChem').value; upd(); } });
     upd();
   }

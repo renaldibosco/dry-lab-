@@ -107,4 +107,63 @@ t('lab calculators', () => {
   assert.strictEqual(B.agaroseGrams(1, 50), 0.5);
   assert.deepStrictEqual(B.bufferRecipe('TBE 10x', 1000).items.map(i => i.amount), [108, 55, 40]);
 });
+t('GenBank: circular plasmid is recognised', () => {
+  const gb = 'LOCUS       pX   20 bp    DNA     circular SYN 01-JAN-2020\nORIGIN\n        1 atgaaacgca ttagcacctg\n//\n';
+  assert.strictEqual(B.parseInput(gb)[0].circular, true);
+  assert.strictEqual(B.parseInput(gb.replace('circular', 'linear'))[0].circular, false);
+});
+t('protein facts: mass, pI, extinction, GRAVY', () => {
+  const f = B.proteinFacts('MKWVTFISLLLLFSSAYS');                   // values from ExPASy ProtParam / Biopython
+  assert.ok(Math.abs(f.kDa - 2.11) < 0.01, f.kDa);
+  assert.ok(Math.abs(f.pI - 8.34) < 0.02, f.pI);
+  assert.strictEqual(f.extReduced, 5500 + 1490 * 1);
+  assert.ok(Math.abs(f.gravy - 1.289) < 0.001, f.gravy);
+  assert.ok(B.proteinFacts('MDEDEDEDEK').pI < 4 && B.proteinFacts('MKKKRRRHHH').pI > 11.5);
+});
+t('qPCR primers stay inside the gene', () => {
+  const s = B.parseInput(window.DEMO_SEQUENCE)[0].seq, o = B.findOrfs(s, { minAA: 100 })[0];
+  const r = B.designPrimers(s, { start: o.start, end: o.end, strand: o.strand }, 'inside',
+    { sizeMin: 70, sizeMax: 150, tmMin: 58, tmOpt: 60, tmMax: 62, lenMin: 18, lenMax: 24, maxTmDiff: 2, results: 5 });
+  assert.ok(r.pairs.length >= 3);
+  for (const p of r.pairs) {
+    assert.ok(p.forward.start >= o.start && p.reverse.end <= o.end, JSON.stringify([p.forward.start, p.reverse.end]));
+    assert.ok(p.productSize >= 70 && p.productSize <= 150 && p.tmDiff <= 2);
+  }
+});
+t('cloning pairs avoid enzymes that cut inside', () => {
+  const gene = 'ATG' + 'GCT'.repeat(30) + 'GAATTC' + 'GCT'.repeat(30) + 'TAA';   // has an EcoRI site
+  const c = B.cloningPairs(gene);
+  assert.ok(c.cutsInside.includes('EcoRI'));
+  assert.ok(c.pairs.length && c.pairs.every(p => p.forward !== 'EcoRI' && p.reverse !== 'EcoRI'));
+  assert.deepStrictEqual(c.pairs[0], { forward: 'NdeI', reverse: 'XhoI' });
+});
+t('mutation primers carry the new codon in the middle', () => {
+  const s = B.parseInput(window.DEMO_SEQUENCE)[0].seq, o = B.findOrfs(s, { minAA: 100 })[0];
+  const m = B.mutagenesis(s, o.start - 1, 10, 'A');
+  assert.strictEqual(m.newAA, 'A');
+  assert.strictEqual(B.translate(m.newCodon), 'A');
+  assert.strictEqual(m.forward, B.revcomp(m.reverse));
+  assert.ok(m.mutantProtein[9] === 'A' && m.mutantProtein.length === o.protein.length);
+  assert.ok(m.changedAt.every(k => k >= 6 && k < m.length - 6));
+  assert.strictEqual(B.mutagenesis(s, o.start - 1, 10, o.protein[9]).error, 'same');
+});
+t('sequencing check finds changes, gaps and the strand', () => {
+  const s = B.parseInput(window.DEMO_SEQUENCE)[0].seq;
+  let read = s.slice(200, 900);
+  read = read.slice(0, 50) + (read[50] === 'A' ? 'C' : 'A') + read.slice(51);
+  read = read.slice(0, 300) + read.slice(301);
+  const c = B.compareSeqs(s, B.revcomp(read));
+  assert.strictEqual(c.reversed, true);
+  assert.strictEqual(c.start, 201);
+  assert.deepStrictEqual(c.diffs.map(d => d.type), ['change', 'deletion']);
+  assert.strictEqual(c.diffs[0].pos, 251);
+  assert.ok(B.compareSeqs(s, 'ACGTTGCAAC'.repeat(30)).identity < 80);
+});
+t('qPCR standard curve and ddCt', () => {
+  const pts = [6, 5, 4, 3, 2].map(e => ({ qty: Math.pow(10, e), ct: 35 - 3.3219 * e }));
+  const r = B.qpcrCurve(pts);
+  assert.ok(Math.abs(r.efficiency - 100) < 0.1 && r.r2 > 0.9999, JSON.stringify(r));
+  assert.strictEqual(B.ddct(22, 18, 25, 18).fold, 8);
+  assert.strictEqual(B.ddct(25, 18, 22, 18).fold, 0.125);
+});
 console.log(`\n${n} tests passed`);
