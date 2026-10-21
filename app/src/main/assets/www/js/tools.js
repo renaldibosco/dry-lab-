@@ -535,8 +535,42 @@
     D.toast(T('Key works. {n} models found.', { n: res.ids.length }));
   }
 
+  // ================================================================ "New in 1.2" card and Lab jump buttons
+  function scrollToEl(el) {                      // land just below the sticky header, whatever its height
+    if (!el) return;
+    setTimeout(() => {
+      const hb = document.querySelector('header.top').getBoundingClientRect().bottom;
+      window.scrollTo({ top: Math.max(0, window.scrollY + el.getBoundingClientRect().top - hb - 8), behavior: 'smooth' });
+    }, 80);
+  }
+  function ensureRec() { if (!S.rec) $('demoBtn').click(); return !!S.rec; }
+  function openGene(section) {
+    D.show('genes');
+    const card = document.querySelector('#orfList .orf');
+    if (!card) { D.toast(T('No genes found')); return; }
+    if (card.querySelector('.more').classList.contains('hidden')) card.querySelector('.head').click();
+    const det = card.querySelectorAll('details.sub')[section];
+    if (det) { det.open = true; scrollToEl(det); }
+  }
+  function goFeature(k) {
+    if (['map', 'protein', 'clone', 'mut', 'qpcr'].includes(k)) ensureRec();
+    if (k === 'map') { D.show('seq'); drawMap(); scrollToEl($('mapCard')); }
+    if (k === 'protein') openGene(0);
+    if (k === 'clone') openGene(1);
+    if (k === 'mut') openGene(2);
+    if (k === 'qpcr') { D.show('primers'); document.querySelector('#modeSeg [data-mode=qpcr]').click(); scrollToEl($('modeSeg')); }
+    if (k === 'calc') { D.show('lab'); document.querySelector('#calcSeg [data-calc=qcurve]').click(); scrollToEl($('calcCard')); }
+    if (k === 'cmp') { D.show('lab'); scrollToEl($('cmpCard')); }
+    if (k === 'ai') { D.show('lab'); scrollToEl($('aiCard')); }
+  }
+
   // ================================================================ wire up
   function init() {
+    $('newCard').classList.toggle('hidden', D.store.get('new12', '') === 'hidden');
+    $('newCard').onclick = (e) => { const b = e.target.closest('[data-new]'); if (b) goFeature(b.dataset.new); };
+    $('newHide').onclick = () => { $('newCard').classList.add('hidden'); D.store.set('new12', 'hidden'); };
+    $('newShow').onclick = () => { $('newCard').classList.remove('hidden'); D.store.set('new12', ''); D.show('seq'); };
+    $('labJump').onclick = (e) => { const b = e.target.closest('[data-jump]'); if (b) scrollToEl($(b.dataset.jump)); };
     if ($('mapSeg')) $('mapSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; MAP.circular = b.dataset.map === 'circ'; drawMap(); };
     D.onData(() => { if (MAP.rec !== S.rec) { MAP.rec = S.rec; MAP.circular = null; } drawMap(); fillCmpRef(); });
     D.onShow('seq', drawMap);

@@ -620,6 +620,28 @@ TA = {
 "Livak 2^-ΔΔCt method. It assumes both genes amplify with about 100% efficiency: check that with a standard curve first.": "Livak 2^-ΔΔCt முறை. இரண்டு மரபணுக்களும் சுமார் 100% திறனுடன் பெருகும் என்று இது எடுத்துக்கொள்கிறது: முதலில் standard curve மூலம் அதைச் சரிபாருங்கள்.",
 "Dry Lab 1.2. Works offline (only Ask AI uses the internet). Calculations: nearest-neighbour Tm (SantaLucia 1998) and protein facts (ExPASy ProtParam), checked against Biopython. Planning tool only: always confirm in the lab.":
   "Dry Lab 1.2. இணையம் இல்லாமலும் வேலை செய்யும் (\"AI-யிடம் கேள்\" மட்டும் இணையம் பயன்படுத்தும்). கணக்கீடுகள்: nearest-neighbour Tm (SantaLucia 1998), புரதத் தகவல்கள் (ExPASy ProtParam); Biopython-உடன் சரிபார்க்கப்பட்டவை. இது திட்டமிடும் கருவி மட்டுமே: எப்போதும் ஆய்வகத்தில் உறுதி செய்யுங்கள்.",
+# ---- 1.2.5: finding the new parts
+"New in Dry Lab 1.2": "Dry Lab 1.2-ல் புதியவை",
+"Hide": "மறை",
+"Tap a button to go straight to it.": "ஒரு பொத்தானைத் தொட்டால் நேராக அங்கே செல்லும்.",
+"Genes and enzyme sites on a circle": "வட்டத்தில் மரபணுக்களும் நொதித் தளங்களும்",
+"Mass, pI and charge of each gene's protein": "ஒவ்வொரு மரபணுவின் புரத நிறை, pI, மின்னூட்டம்",
+"Clone a gene": "மரபணுவை குளோன் செய்",
+"Enzyme pairs and cloning primers": "நொதி ஜோடிகளும் குளோனிங் ப்ரைமர்களும்",
+"Mutation primers": "மாற்றப் ப்ரைமர்கள்",
+"Change one amino acid": "ஒரு அமினோ அமிலத்தை மாற்று",
+"qPCR primers": "qPCR ப்ரைமர்கள்",
+"Short product inside the gene": "மரபணுவுக்குள் சிறிய தயாரிப்பு",
+"qPCR calculators": "qPCR கணக்கிகள்",
+"Standard curve and ΔΔCt": "Standard curve மற்றும் ΔΔCt",
+"Check sequencing": "Sequencing சரிபார்ப்பு",
+"Compare a Sanger result": "Sanger முடிவை ஒப்பிடு",
+"Optional, needs internet": "விருப்பம், இணையம் தேவை",
+"Troubleshooter": "பிழை தீர்ப்பான்",
+"Notebook": "குறிப்பேடு",
+"Calculators": "கணக்கிகள்",
+"What's new in 1.2": "1.2-ல் புதியவை",
+"Tap to open: gene DNA, protein facts, cloning and mutation primers": "திறக்கத் தொடுங்கள்: மரபணு DNA, புரதத் தகவல்கள், குளோனிங், மாற்றப் ப்ரைமர்கள்",
 }
 
 # Phrases with numbers made by the engine (bio.js): [regex, Tamil with $1 $2 ...]

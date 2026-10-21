@@ -22,6 +22,20 @@
 <main>
 <!-- ============================== SEQUENCE ============================== -->
 <section id="tab-seq" class="tab active">
+  <div class="card newcard hidden" id="newCard">
+    <div class="title-row"><h2>New in Dry Lab 1.2</h2><button class="btn small ghost" id="newHide">Hide</button></div>
+    <p class="muted">Tap a button to go straight to it.</p>
+    <div class="newgrid">
+      <button data-new="map">DNA map<span>Genes and enzyme sites on a circle</span></button>
+      <button data-new="protein">Protein facts<span>Mass, pI and charge of each gene's protein</span></button>
+      <button data-new="clone">Clone a gene<span>Enzyme pairs and cloning primers</span></button>
+      <button data-new="mut">Mutation primers<span>Change one amino acid</span></button>
+      <button data-new="qpcr">qPCR primers<span>Short product inside the gene</span></button>
+      <button data-new="calc">qPCR calculators<span>Standard curve and ΔΔCt</span></button>
+      <button data-new="cmp">Check sequencing<span>Compare a Sanger result</span></button>
+      <button data-new="ai">Ask AI<span>Optional, needs internet</span></button>
+    </div>
+  </div>
   <div class="card">
     <h2>1. Your DNA sequence</h2>
     <p class="learn">Paste DNA, or open a FASTA (.fasta, .fa), GenBank (.gb) or text file. Numbers and spaces are removed for you. RNA (U) is changed to DNA (T).</p>
@@ -235,7 +249,15 @@
 
 <!-- ============================== LAB ============================== -->
 <section id="tab-lab" class="tab">
-  <div class="card">
+  <div class="jump" id="labJump">
+    <button data-jump="probCard">Troubleshooter</button>
+    <button data-jump="nbCard">Notebook</button>
+    <button data-jump="calcCard">Calculators</button>
+    <button data-jump="cmpCard">Check sequencing</button>
+    <button data-jump="aiCard">Ask AI</button>
+    <button data-jump="toolsCard">Quick tools</button>
+  </div>
+  <div class="card" id="probCard">
     <h2>PCR troubleshooter</h2>
     <p class="muted">What did you see on your gel?</p>
     <div class="probs" id="probs">
@@ -250,7 +272,7 @@
     <div id="probOut"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="nbCard">
     <div class="title-row"><h2>Lab notebook</h2><button class="btn small primary" id="nbNew">New entry</button></div>
     <div id="nbForm" class="hidden">
       <label>Title<input id="nbTitle" placeholder="e.g. Gene 1 PCR, trial 2"></label>
@@ -264,7 +286,7 @@
     <div id="nbList"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="calcCard">
     <h2>Lab calculators</h2>
     <div class="seg scroll" id="calcSeg">
       <button data-calc="dil" class="on">Dilution</button>
@@ -313,7 +335,7 @@
     <p class="muted small">Your key is saved only on this phone. Questions go straight from your phone to the service you chose. AI can be wrong: check important steps with your teacher or a protocol.</p>
   </div>
 
-  <div class="card">
+  <div class="card" id="toolsCard">
     <h2>Quick tools</h2>
     <textarea id="toolIn" rows="4" spellcheck="false" placeholder="Paste a short DNA sequence or a primer"></textarea>
     <div class="row wrap">
@@ -342,6 +364,7 @@
     <pre id="dimOut" class="out"></pre>
   </div>
   <p class="about muted">Dry Lab 1.2. Works offline (only Ask AI uses the internet). Calculations: nearest-neighbour Tm (SantaLucia 1998) and protein facts (ExPASy ProtParam), checked against Biopython. Planning tool only: always confirm in the lab.</p>
+  <button class="btn small ghost" id="newShow">What's new in 1.2</button>
 </section>
 </main>
 

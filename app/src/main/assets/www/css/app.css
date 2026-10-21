@@ -208,3 +208,19 @@ th.num { white-space: normal; }
 .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .stat span { overflow-wrap: anywhere; }
 #cmpOut th { font-size: 12px; overflow-wrap: anywhere; }
+
+/* ---------- 1.2.5: easier to find the new parts ---------- */
+.card, details.sub, #modeSeg { scroll-margin-top: 84px; }
+.newcard { border: 1.5px solid var(--accent); }
+.newgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.newgrid button { text-align: left; border: 1px solid var(--line); background: var(--accent-soft); color: var(--ink); border-radius: 12px; padding: 10px; font: 700 14px var(--sans); min-width: 0; overflow-wrap: break-word; }
+.newgrid button span { display: block; font: 400 12px/1.35 var(--sans); color: var(--muted); margin-top: 3px; }
+.jump { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.jump button { border: 1px solid var(--line); background: var(--card); color: var(--accent); font: 600 13px var(--sans); border-radius: 999px; padding: 7px 12px; }
+.tapmore { font-size: 12.5px; color: var(--accent); font-weight: 600; margin-top: 8px; }
+.orf .more:not(.hidden) + .tapmore { display: none; }
+#newShow { margin: 0 auto 16px; display: block; }
+@media (max-width: 420px) { .brand p { display: none; } }   /* keep the sticky header short on phones */
+#calcSeg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; overflow: visible; }
+#calcSeg button { padding: 8px 2px; font-size: 12.5px; line-height: 1.25; }
+body.lang-ta #calcSeg { grid-template-columns: repeat(3, minmax(0, 1fr)); }

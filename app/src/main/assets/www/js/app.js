@@ -165,7 +165,7 @@
       <div class="head"><b>${T('Gene')} #${i + 1}</b><span class="tag">${o.strand} ${T('strand')}${o.complete ? '' : ' - ' + T('no stop')}</span></div>
       <div class="codons">${cod('Start', o.startCodon, o.startCodonAt, 'start')}${o.complete ? cod('Stop', o.stopCodon, o.stopCodonAt, 'stop') : `<span class="codon stop">${T('No stop before the end')}</span>`}</div>
       <div class="kv"><span><b>${fmtN(o.lengthNt)}</b> bp</span><span><b>${fmtN(o.lengthAA)}</b> ${T('amino acids')}</span><span>~<b>${o.proteinKDa}</b> ${T('kDa protein')}</span><span>${T('frame')} ${o.frame > 0 ? '+' : ''}${o.frame}</span></div>
-      <div class="more hidden"></div></div>`;
+      <div class="more hidden"></div><div class="tapmore">${T('Tap to open: gene DNA, protein facts, cloning and mutation primers')} ▾</div></div>`;
   }
 
   function renderOrfs(limit) {
