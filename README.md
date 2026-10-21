@@ -25,7 +25,7 @@ It works with **no internet** and sends nothing anywhere. Your last sequence is 
 ## Install
 
 1. Open the latest release in **Releases** (right side of this page) on your phone.
-2. Download `DryLab-1.0.x.apk` and open it. Allow "install unknown apps" for your browser or file manager when Android asks.
+2. Download `DryLab-1.1.x.apk` and open it. Allow "install unknown apps" for your browser or file manager when Android asks.
 
 Needs Android 8.0 or newer.
 
@@ -35,7 +35,7 @@ Needs Android 8.0 or newer.
 - **Genes**: bacterial genetic code (NCBI table 11). ATG start by default, GTG/TTG optional. Checked against Biopython translation.
 - **Annealing temperature**: lower primer Tm − 4 °C for Taq, + 3 °C for Phusion/Q5-type enzymes, with the Rychlik formula as a second estimate.
 - **Product Tm**: 81.5 + 16.6 log[Na⁺] + 0.41 (%GC) − 675/length.
-- **Gel photo sizes**: band peaks are found along each lane; the ladder is matched by trying every alignment and keeping the one whose sizes follow a smooth curve and whose reference bands are brightest; sizes are read by log-linear interpolation between the nearest ladder bands. `tests` include 8 simulated gels (0.7-3% agarose, inverted, blurred, photo-like).
+- **Gel photo sizes**: band peaks are found along each lane; the ladder is matched by trying every alignment and keeping the one whose sizes follow a smooth curve and whose reference bands are brightest; sizes are read by log-linear interpolation between the nearest ladder bands. `tests/gel_reader_test.py` reads back 8 simulated gels (0.7-3% agarose, inverted, blurred, photo-like); the worst error is about 5%.
 
 Dry Lab is a planning and teaching tool. Always confirm results in the lab.
 
@@ -43,7 +43,10 @@ Dry Lab is a planning and teaching tool. Always confirm results in the lab.
 
 ```
 app/src/main/assets/www/     the app itself (HTML, CSS, JavaScript), runs offline
-  js/bio.js                  biology engine: sequences, genes, Tm, primers, PCR program
+  js/bio.js                  biology engine: sequences, genes, Tm, primers, PCR program, digests, gel model, calculators
+  js/gel.js                  virtual gel and gel photo reader
+  js/lab.js                  troubleshooter, notebook, calculators
+  js/i18n.js, js/ta.js       English / Tamil (edit tools/ta_words.py, then run it)
   js/app.js                  screens
 app/src/main/java/...        Android wrapper: file picker, share, copy
 tests/test_bio.js            engine tests (node tests/test_bio.js)
