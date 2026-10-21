@@ -34,6 +34,8 @@
       <button data-new="calc">qPCR calculators<span>Standard curve and ΔΔCt</span></button>
       <button data-new="cmp">Check sequencing<span>Compare a Sanger result</span></button>
       <button data-new="ai">Ask AI<span>Optional, needs internet</span></button>
+      <button data-new="viva">Viva practice<span>AI asks, marks and teaches</span></button>
+      <button data-new="rec">Lab record writer<span>Aim to Inference, by AI</span></button>
     </div>
   </div>
   <div class="card">
@@ -242,7 +244,9 @@
         <button class="btn small" id="photoUndo">Undo last lane</button>
         <button class="btn small" id="photoShare">Share sizes</button>
         <button class="btn small" id="photoSave">Save to notebook</button>
+        <button class="btn small" id="photoAI">Explain with AI</button>
       </div>
+      <div id="photoAIbox"></div>
     </div>
   </div>
 </section>
@@ -255,6 +259,8 @@
     <button data-jump="calcCard">Calculators</button>
     <button data-jump="cmpCard">Check sequencing</button>
     <button data-jump="aiCard">Ask AI</button>
+    <button data-jump="vivaCard">Viva practice</button>
+    <button data-jump="recCard">Lab record</button>
     <button data-jump="toolsCard">Quick tools</button>
   </div>
   <div class="card" id="probCard">
@@ -333,6 +339,36 @@
     <label class="check"><input type="checkbox" id="aiCtx" checked> Attach my current results (sequence summary, primers, PCR program, gel reading)</label>
     <div class="row wrap"><button class="btn primary" id="aiAsk">Ask</button><button class="btn ghost small" id="aiNew">New chat</button></div>
     <p class="muted small">Your key is saved only on this phone. Questions go straight from your phone to the service you chose. AI can be wrong: check important steps with your teacher or a protocol.</p>
+  </div>
+
+  <div class="card" id="vivaCard">
+    <div class="title-row"><h2>Viva practice</h2><span class="tag">AI</span></div>
+    <p class="learn">The AI acts as your viva examiner. It asks one question at a time, marks your answer out of 10, says what was missing, and gives a model answer. Uses your Ask AI key.</p>
+    <label>Topic<select id="vivaTopic">
+      <option value="mine" data-t>My experiment (current results)</option>
+      <option value="app" data-t>My project: the Dry Lab app</option>
+      <option value="pcr" data-t>PCR</option>
+      <option value="primer" data-t>Primer design</option>
+      <option value="gel" data-t>Agarose gel electrophoresis</option>
+      <option value="clone" data-t>Cloning and restriction enzymes</option>
+      <option value="qpcr" data-t>qPCR</option>
+      <option value="seq" data-t>DNA sequencing</option>
+      <option value="protein" data-t>Genes and proteins</option></select></label>
+    <div class="row wrap"><button class="btn primary" id="vivaStart">Start viva</button><span class="muted" id="vivaScore"></span></div>
+    <div id="vivaChat"></div>
+    <div id="vivaAnswerBox" class="hidden">
+      <textarea id="vivaA" rows="3" placeholder="Type your answer"></textarea>
+      <div class="row wrap"><button class="btn primary" id="vivaSend">Check my answer</button><button class="btn ghost small" id="vivaSkip">I don't know</button><button class="btn ghost small" id="vivaStop">Finish</button></div>
+    </div>
+  </div>
+
+  <div class="card" id="recCard">
+    <div class="title-row"><h2>Lab record writer</h2><span class="tag">AI</span></div>
+    <p class="learn">Turns your experiment into a neat record for your practical notebook (Aim, Principle, Materials, Procedure, Result, Inference), or into a step-by-step protocol for the bench. Uses your Ask AI key.</p>
+    <label>From<select id="recFrom"></select></label>
+    <label>Write<select id="recType"><option value="record" data-t>Lab record (Aim to Inference)</option><option value="protocol" data-t>Step-by-step protocol</option></select></label>
+    <button class="btn primary" id="recBtn">Write it</button>
+    <div id="recOut"></div>
   </div>
 
   <div class="card" id="toolsCard">

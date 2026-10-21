@@ -284,7 +284,7 @@
 
   function geneExtras(box, o, i) {
     const pf = B.proteinFacts(o.protein);
-    box.innerHTML = (pf ? proteinHtml(pf) : '') + cloneHtml(o) + mutHtml(o);
+    box.innerHTML = `<button class="btn small" data-tx="geneai">${T('Explain this gene (AI)')}</button><div class="geneaiBox"></div>` + (pf ? proteinHtml(pf) : '') + cloneHtml(o) + mutHtml(o);
     if (pf) drawHydro(box.querySelector('.hydro'), o.protein);
     const now = () => {
       const p = Math.round(+box.querySelector('.mPos').value), aa = o.protein[p - 1];
@@ -300,6 +300,9 @@
       if (a === 'mut') mutResult(box, o);
       if (a === 'mcopy' && out._text) D.copy(out._text);
       if (a === 'mshare' && out._text) D.share('Mutation primers', out._text);
+      if (a === 'geneai') explain(box.querySelector('.geneaiBox'), 'a gene found in the sequence',
+        `Gene ${i + 1}: bases ${o.start}-${o.end} on the ${o.strand} strand, ${o.lengthNt} bp, ${o.lengthAA} amino acids, start codon ${o.startCodon}, stop codon ${o.stopCodon || 'none (runs off the end)'}.` +
+        (pf ? ` Protein: ${pf.kDa} kDa, pI ${pf.pI}, charge at pH 7 ${pf.chargeAt7}, extinction coefficient ${pf.extReduced}, GRAVY ${pf.gravy}.` : '') + `\nProtein sequence: ${o.protein.slice(0, 400)}`);
     };
   }
 
@@ -352,9 +355,15 @@
         <p class="muted">${T('Your read covers bases {a}-{b} of the expected DNA.', { a: fmtN(c.start), b: fmtN(c.end) })}${c.reversed ? ' ' + T('It was read from the other strand (reverse primer), so Dry Lab flipped it for you.') : ''}${c.ambiguous ? ' ' + T('{n} unclear bases (N) were skipped.', { n: c.ambiguous }) : ''}</p>
         ${!diffs.length ? `<p class="okline">${T('Perfect match: no differences.')}</p>` : `<table><tr><th class="num">${T('Base')}</th><th>${T('Expected')}</th><th>${T('Got')}</th><th>${T('What it means')}</th></tr>${rows}</table>`}
         ${c.identity < 90 ? `<p class="warn">${T('Low match. Check that this is the right sample and the right expected sequence.')}</p>` : ''}
+        <button class="btn small" data-tx="cmpai">${T('Explain with AI')}</button>
         <details><summary>${T('Show the alignment')}</summary><pre class="aln noi18n">${alignView(c)}</pre></details>
         <p class="learn">${T('Sanger reads are unreliable in the first 30 or so bases and after about 800. A difference there may be a reading error: look at the trace (chromatogram) before you decide.')}</p>`;
     }, 20);
+  }
+
+  function cmpSummary() {
+    const t = $('cmpOut').innerText.split('\n').filter(l => l.trim()).slice(0, 40).join('\n');
+    return 'Sanger sequencing result compared with the expected DNA:\n' + t;
   }
 
   function alignView(c) {
@@ -470,22 +479,17 @@
       (AI.busy ? `<div class="msg ai wait">${T('Thinking...')}</div>` : '');
   }
 
-  async function ask() {
-    const cfg = loadCfg(), q = $('aiQ').value.trim();
-    if (!cfg.key) { D.toast(T('Save your API key first')); $('aiSetup').classList.remove('hidden'); return; }
-    if (!q || AI.busy) return;
-    if (!cfg.model) { D.toast(T('Choose a model first')); return; }
-    const ctx = $('aiCtx').checked ? contextText() : '';
-    const content = ctx ? `My current results in Dry Lab:\n${ctx}\n\nMy question: ${q}` : q;
-    AI.history.push({ role: 'user', content, show: q });
-    $('aiQ').value = ''; AI.busy = true; renderChat();
-    const ep = endpoint(cfg), msgs = AI.history.filter(m => !m.error).slice(-10);
+  /** One request to the chosen AI service. msgs = [{role: 'user'|'assistant', content}], starting with 'user'. */
+  async function callAI(msgs, sys, maxTok) {
+    const cfg = loadCfg();
+    if (!cfg.key) return { error: T('Set up Ask AI first: paste your own API key in the Lab tab.'), nokey: true };
+    if (!cfg.model) return { error: T('Choose a model first') };
+    const ep = endpoint(cfg); sys = sys || system();
     let body;
-    if (cfg.prov === 'claude') body = { model: cfg.model, max_tokens: 1200, system: system(), messages: msgs.map(m => ({ role: m.role, content: m.content })) };
-    else if (cfg.prov === 'gemini') body = { systemInstruction: { parts: [{ text: system() }] }, contents: msgs.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] })) };
-    else body = { model: cfg.model, messages: [{ role: 'system', content: system() }].concat(msgs.map(m => ({ role: m.role, content: m.content }))) };
+    if (cfg.prov === 'claude') body = { model: cfg.model, max_tokens: maxTok || 1500, system: sys, messages: msgs };
+    else if (cfg.prov === 'gemini') body = { systemInstruction: { parts: [{ text: sys }] }, contents: msgs.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] })) };
+    else body = { model: cfg.model, messages: [{ role: 'system', content: sys }].concat(msgs) };
     const r = await request('POST', ep.chat, ep.headers, body);
-    AI.busy = false;
     const j = r.code >= 200 && r.code < 300 ? parse(r.text) : null;
     let text = '';
     if (j) {
@@ -493,14 +497,154 @@
       else if (cfg.prov === 'gemini') text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
       else text = (((j.choices || [])[0] || {}).message || {}).content || '';
     }
-    if (text) AI.history.push({ role: 'assistant', content: text });
+    if (text.trim()) return { text: text.trim() };
+    return { error: j ? T('The service gave an empty answer. Try asking again.') : errText(r) };
+  }
+
+  async function ask() {
+    const cfg = loadCfg(), q = $('aiQ').value.trim();
+    if (!cfg.key) { D.toast(T('Save your API key first')); $('aiSetup').classList.remove('hidden'); return; }
+    if (!q || AI.busy) return;
+    const ctx = $('aiCtx').checked ? contextText() : '';
+    const content = ctx ? `My current results in Dry Lab:\n${ctx}\n\nMy question: ${q}` : q;
+    AI.history.push({ role: 'user', content, show: q });
+    $('aiQ').value = ''; AI.busy = true; renderChat();
+    const msgs = AI.history.filter(m => !m.error).slice(-10).map(m => ({ role: m.role, content: m.content }));
+    const r = await callAI(msgs);
+    AI.busy = false;
+    if (r.text) AI.history.push({ role: 'assistant', content: r.text });
     else {
-      AI.history.pop();                         // keep the question out of the next request
+      AI.history.pop();                         // keep the failed question out of the next request
       AI.history.push({ role: 'user', content: q, show: q, error: true });
-      AI.history.push({ role: 'assistant', content: j ? T('The service gave an empty answer. Try asking again.') : errText(r), error: true });
+      AI.history.push({ role: 'assistant', content: r.error, error: true });
     }
     renderChat();
     const last = $('aiChat').lastElementChild; if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // ---------------------------------------------------------------- "Explain with AI" buttons
+  function aiNeedsKey(box) {
+    box.innerHTML = `<p class="warn">${T('Set up Ask AI first: paste your own API key in the Lab tab.')}</p><button class="btn small" data-tx="gosetup">${T('Set up Ask AI')}</button>`;
+    box.querySelector('[data-tx=gosetup]').onclick = (e) => { e.stopPropagation(); goFeature('ai'); };
+  }
+  /** Explain one result in plain words. holder = element to show the answer in (an .aibox is added once). */
+  async function explain(holder, what, text) {
+    if (!holder) return;
+    let box = holder.querySelector(':scope > .aibox');
+    if (!box) { box = document.createElement('div'); box.className = 'aibox noi18n'; holder.appendChild(box); }
+    if (!loadCfg().key) { aiNeedsKey(box); return; }
+    if (box.dataset.busy) return;
+    box.dataset.busy = '1';
+    box.innerHTML = `<span class="muted">${T('Thinking...')}</span>`;
+    const prompt = `Explain this Dry Lab result (${what}) to a first-year B.Sc. biotechnology student. Say what each number means, whether it looks good or risky, and give one or two practical tips for the lab. At most 180 words. Use only the numbers given; do not invent new measurements.\n\n${text}`;
+    const r = await callAI([{ role: 'user', content: prompt }], null, 700);
+    delete box.dataset.busy;
+    box.innerHTML = r.text ? `<div class="aitext">${md(r.text)}</div><p class="muted small">${T('AI explanation. It can be wrong: check with your teacher.')}</p>` : `<p class="warn">${esc(r.error)}</p>`;
+  }
+
+  // ---------------------------------------------------------------- viva practice
+  const VIVA = { history: [], busy: false, scores: [], on: false };
+  const VIVA_TOPICS = {
+    mine: 'the student\'s own experiment shown in the data below (sequence, gene, primers, PCR program, gel)',
+    pcr: 'the polymerase chain reaction (principle, steps, temperatures, components, Taq polymerase, troubleshooting)',
+    primer: 'PCR primer design (length, Tm, GC content, GC clamp, hairpins, primer-dimers, annealing temperature)',
+    gel: 'agarose gel electrophoresis (principle, agarose percentage, buffers, ladders, staining, reading band sizes)',
+    clone: 'molecular cloning (restriction enzymes, sticky and blunt ends, ligation, vectors, transformation, selection)',
+    qpcr: 'real-time qPCR (SYBR Green, Ct, standard curve, efficiency, melt curve, the 2^-ddCt method)',
+    seq: 'DNA sequencing (Sanger chain termination, ddNTPs, chromatograms, reading a sequencing result, mutations)',
+    protein: 'genes and proteins (genetic code, codons, ORFs, start and stop codons, translation, pI, molecular weight)',
+    app: 'the student\'s own project, the Dry Lab app, described below',
+  };
+  const APP_FACTS = 'Dry Lab is an offline Android app made by the student for PCR planning. Sequence tab: GC/AT %, GC chart, DNA map. ' +
+    'Genes tab: ORF finder (NCBI genetic code table 11, both strands), protein facts (molecular weight, pI with Bjellqvist pK values, extinction coefficient, GRAVY, Kyte-Doolittle hydropathy), cloning enzyme pairs, site-directed mutagenesis primers. ' +
+    'Primers tab: nearest-neighbour Tm (SantaLucia 1998 parameters, salt and Mg2+ correction by von Ahsen 2001), checks for GC clamp, hairpins, self- and cross-dimers, extra binding sites; modes: whole gene, around a region, anywhere, qPCR (70-150 bp). ' +
+    'PCR tab: annealing temperature = lower primer Tm - 4 C for Taq (+3 C for high-fidelity enzymes), Rychlik formula as a second estimate, extension time from product length, touchdown PCR, advice for GC-rich DNA (DMSO, betaine), master mix calculator. ' +
+    'Gel tab: virtual agarose gel and a gel photo reader that finds bands in each lane and reads sizes by log-linear interpolation against the ladder (about 5% error in tests). ' +
+    'Lab tab: PCR troubleshooter, lab notebook, Sanger result check by sequence alignment, calculators (dilution, molarity, A260, copy number, qPCR efficiency, ddCt), optional AI helper with the user\'s own key. ' +
+    'Results were checked against Biopython (Tm within 0.01 C, ORFs identical, protein facts match ProtParam). Built with HTML/JavaScript inside an Android WebView, Java wrapper, English and Tamil.';
+
+  function vivaSystem(topic) {
+    const lang = D.I.lang === 'ta' ? 'Write in Tamil (தமிழ்), keeping technical terms in English, but keep the labels "Score:", "Model answer:" and "Next question:" in English.' : 'Write in English.';
+    return `You are a friendly but strict viva (oral exam) examiner for a B.Sc. Biotechnology practical exam in India. Topic: ${VIVA_TOPICS[topic]}. ` +
+      'Ask ONE clear question at a time, the kind an external examiner really asks. Start easy, then get harder. ' +
+      'When the student answers, reply in this order: a first line exactly like "Score: 7/10"; then one or two lines on what was right and what was missing or wrong; ' +
+      'then "Model answer:" followed by a 2-4 sentence ideal answer; then "Next question:" followed by the next question. ' +
+      'If the student says they want to finish, give "Total:" with their average, then the three topics they should revise, and stop asking questions. ' +
+      'Never ask more than one question at a time. ' + lang;
+  }
+  function vivaRender() {
+    const avg = VIVA.scores.length ? VIVA.scores.reduce((a, b) => a + b, 0) / VIVA.scores.length : null;
+    $('vivaScore').textContent = VIVA.scores.length ? T('Score so far: {s}/10 average over {n} answers', { s: B.round(avg, 1), n: VIVA.scores.length }) : '';
+    $('vivaChat').innerHTML = VIVA.history.filter(m => !m.hidden).map(m => `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}${m.error ? ' err' : ''} noi18n">${m.role === 'user' ? esc(m.content) : md(m.content)}</div>`).join('') +
+      (VIVA.busy ? `<div class="msg ai wait">${T('Thinking...')}</div>` : '');
+    $('vivaAnswerBox').classList.toggle('hidden', !VIVA.on);
+    $('vivaStart').textContent = VIVA.on ? T('Start again') : T('Start viva');
+  }
+  async function vivaSend(userText, hidden) {
+    if (VIVA.busy) return;
+    VIVA.history.push({ role: 'user', content: userText, hidden });
+    VIVA.busy = true; vivaRender();
+    const msgs = VIVA.history.filter(m => !m.error).slice(-14).map(m => ({ role: m.role, content: m.content }));
+    const r = await callAI(msgs, vivaSystem(VIVA.topic), 900);
+    VIVA.busy = false;
+    if (r.text) {
+      VIVA.history.push({ role: 'assistant', content: r.text });
+      const m = r.text.match(/Score:\s*(\d+(?:\.\d+)?)\s*\/\s*10/i) || r.text.split('\n')[0].match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+      if (m && !hidden) VIVA.scores.push(Math.min(10, +m[1]));
+      if (/^\s*\**Total:/im.test(r.text)) VIVA.on = false;
+    } else {
+      VIVA.history.pop();
+      if (r.nokey) { VIVA.on = false; vivaRender(); aiNeedsKey($('vivaChat')); return; }
+      VIVA.history.push({ role: 'assistant', content: r.error, error: true });
+    }
+    vivaRender();
+    const last = $('vivaChat').lastElementChild; if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+  function vivaStart() {
+    VIVA.topic = $('vivaTopic').value; VIVA.history = []; VIVA.scores = []; VIVA.on = true;
+    let first = 'Start the viva now. Ask me the first question.';
+    if (VIVA.topic === 'mine') {
+      const ctx = contextText();
+      first += ctx ? '\n\nMy experiment data from Dry Lab:\n' + ctx : '\n\n(I have not opened a sequence yet, so ask about PCR in general.)';
+    }
+    if (VIVA.topic === 'app') first += '\n\nAbout my project:\n' + APP_FACTS;
+    vivaSend(first, true);
+  }
+
+  // ---------------------------------------------------------------- lab record / protocol writer
+  function fullContext() {
+    const L = [contextText()];
+    const mm = $('mmOut') && $('mmOut').innerText.trim();
+    if (mm) L.push('Master mix (per tube and for all tubes, uL):\n' + mm.replace(/\t/g, ' | '));
+    const pct = $('gelPct') && $('gelPct').value, lad = $('gelLadder') && $('gelLadder').selectedOptions[0];
+    if (pct) L.push(`Planned agarose gel: ${pct === 'auto' ? 'percentage chosen by the app' : pct + '%'}, ladder ${lad ? lad.textContent : ''}`);
+    return L.filter(Boolean).join('\n');
+  }
+  function fillRecFrom() {
+    const sel = $('recFrom'); if (!sel) return;
+    const prev = sel.value, list = (window.DryLabLab && window.DryLabLab.entries) ? window.DryLabLab.entries() : [];
+    sel.innerHTML = `<option value="now">${T('My current results in Dry Lab')}</option>` +
+      list.slice(0, 30).map(e => `<option value="${esc(e.id)}">${T('Notebook')}: ${esc(e.title)}</option>`).join('');
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+  async function writeRecord(entryId) {
+    fillRecFrom();
+    if (entryId) { $('recFrom').value = entryId; D.show('lab'); scrollToEl($('recCard')); }
+    const from = $('recFrom').value, type = $('recType').value, out = $('recOut');
+    let data = '';
+    if (from === 'now') data = fullContext();
+    else { const e = window.DryLabLab.entries().find(x => x.id === from); data = e ? window.DryLabLab.entryText(e) : ''; }
+    if (!data.trim()) { out.innerHTML = `<p class="warn">${T('Nothing to write from yet. Analyze a sequence and design primers first, or save a notebook entry.')}</p>`; return; }
+    if (!loadCfg().key) { aiNeedsKey(out); return; }
+    out.innerHTML = `<div class="aibox"><span class="muted">${T('Writing...')}</span></div>`;
+    const ask = type === 'record'
+      ? 'Write a lab record for a B.Sc. Biotechnology practical record notebook, using ONLY the data below. Headings: Aim, Principle (3-5 sentences), Materials required, Procedure (numbered steps with the exact temperatures, times and volumes from the data), Result, Inference, Precautions. Do not invent results: if the data has no measured result, write "Result: to be filled in after the experiment." Plain text with headings, no tables.'
+      : 'Write a step-by-step bench protocol for this experiment using the data below: preparation, reaction set-up with volumes (use the master mix if given), the PCR program, agarose gel (percentage and ladder), and the result to expect. Numbered steps, short lines. Use the numbers given; where a number is missing, give the usual standard value and mark it "(standard)".';
+    const r = await callAI([{ role: 'user', content: ask + '\n\nDATA:\n' + data }], null, 1800);
+    if (!r.text) { out.innerHTML = `<p class="warn">${esc(r.error)}</p>`; return; }
+    out._text = r.text;
+    out.innerHTML = `<div class="aibox noi18n"><div class="aitext">${md(r.text)}</div></div><p class="muted small">${T('Written by AI from your data. Read it and correct it before you copy it into your record.')}</p>
+      <div class="row wrap"><button class="btn small" data-rec="copy">${T('Copy')}</button><button class="btn small" data-rec="share">${T('Share')}</button><button class="btn small" data-rec="save">${T('Save to notebook')}</button></div>`;
   }
 
   function showAiSetup() {
@@ -562,6 +706,8 @@
     if (k === 'calc') { D.show('lab'); document.querySelector('#calcSeg [data-calc=qcurve]').click(); scrollToEl($('calcCard')); }
     if (k === 'cmp') { D.show('lab'); scrollToEl($('cmpCard')); }
     if (k === 'ai') { D.show('lab'); scrollToEl($('aiCard')); }
+    if (k === 'viva') { D.show('lab'); scrollToEl($('vivaCard')); }
+    if (k === 'rec') { D.show('lab'); fillRecFrom(); scrollToEl($('recCard')); }
   }
 
   // ================================================================ wire up
@@ -576,7 +722,7 @@
     D.onShow('seq', drawMap);
     D.onShow('lab', fillCmpRef);
     D.onGene(geneExtras);
-    D.onLang(() => { drawMap(); fillCmpRef(); showAiSetup(); renderChat(); if ($('cmpOut').innerHTML && $('cmpRead').value) compare(); });
+    D.onLang(() => { drawMap(); fillCmpRef(); fillRecFrom(); showAiSetup(); renderChat(); vivaRender(); if ($('cmpOut').innerHTML && $('cmpRead').value) compare(); });
     window.addEventListener('resize', drawMap);
 
     $('cmpRef').onchange = () => $('cmpRefText').classList.toggle('hidden', $('cmpRef').value !== 'paste');
@@ -591,10 +737,30 @@
     $('aiEdit').onclick = () => { AI.editing = true; showAiSetup(); };
     $('aiForget').onclick = () => { saveCfg({}); AI.editing = false; AI.history = []; renderChat(); showAiSetup(); D.toast(T('Key removed from this phone')); };
     $('aiAsk').onclick = ask;
+    $('cmpOut').addEventListener('click', (e) => { if (e.target.closest('[data-tx=cmpai]')) explain($('cmpOut'), 'a Sanger sequencing check', cmpSummary()); });
+    $('photoAI').onclick = () => {
+      const G = window.DryLabGel && window.DryLabGel.G;
+      if (!G || !G.samples || !G.samples.length) { D.toast(T('Tap a sample lane first')); return; }
+      explain($('photoAIbox'), 'gel photo reading', window.DryLabGel.photoText());
+    };
+    $('vivaStart').onclick = vivaStart;
+    $('vivaSend').onclick = () => { const a = $('vivaA').value.trim(); if (!a) return; $('vivaA').value = ''; vivaSend(a); };
+    $('vivaSkip').onclick = () => vivaSend(T("I don't know. Please give the model answer and ask the next question."));
+    $('vivaStop').onclick = () => vivaSend(T('I want to finish the viva now. Give my total.'));
+    $('recBtn').onclick = () => writeRecord();
+    $('recFrom').addEventListener('focus', fillRecFrom);
+    $('recOut').onclick = (e) => {
+      const a = e.target.dataset.rec, t = $('recOut')._text; if (!a || !t) return;
+      if (a === 'copy') D.copy(t);
+      if (a === 'share') D.share('Lab record', t);
+      if (a === 'save' && window.DryLabLab) window.DryLabLab.newEntry({ title: ($('recType').value === 'record' ? 'Lab record' : 'Protocol') + ' - ' + new Date().toLocaleDateString('en-IN'), notes: t });
+    };
+    D.onShow('lab', fillRecFrom);
+    fillRecFrom();
     $('aiNew').onclick = () => { AI.history = []; renderChat(); };
     showAiSetup();
   }
 
-  window.DryLabTools = { drawMap, compare, contextText };
+  window.DryLabTools = { drawMap, compare, contextText, explain, writeRecord, goFeature };
   document.addEventListener('DOMContentLoaded', init);
 })();

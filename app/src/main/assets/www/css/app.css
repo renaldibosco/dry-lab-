@@ -224,3 +224,12 @@ th.num { white-space: normal; }
 #calcSeg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; overflow: visible; }
 #calcSeg button { padding: 8px 2px; font-size: 12.5px; line-height: 1.25; }
 body.lang-ta #calcSeg { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* ---------- 1.2.6: AI explain, viva, lab record ---------- */
+.aibox { background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+.aitext { white-space: pre-wrap; overflow-wrap: break-word; font-size: 14px; line-height: 1.55; }
+.aitext code { font: 12.5px var(--mono); background: var(--code); padding: 0 4px; border-radius: 4px; }
+#vivaChat { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+#vivaChat:empty { display: none; }
+#vivaA { font-family: var(--sans); }
+.gx > .btn { margin-top: 8px; }

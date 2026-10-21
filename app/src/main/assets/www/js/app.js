@@ -346,7 +346,8 @@
         <div class="badges">${pi}</div>
         <div class="row wrap"><button class="btn primary small" data-pcr="${i}">${T('Use for PCR')} &rarr;</button>
         <button class="btn small" data-gel="${i}">${T('See on gel')}</button>
-        <button class="btn small" data-copy="${i}">${T('Copy')}</button><button class="btn small" data-share="${i}">${T('Share order')}</button></div></div>`;
+        <button class="btn small" data-copy="${i}">${T('Copy')}</button><button class="btn small" data-share="${i}">${T('Share order')}</button>
+        <button class="btn small" data-ai="${i}">${T('Explain with AI')}</button></div></div>`;
     });
     if (tailNote && res.pairs.length) html += `<p class="learn">${T(tailNote)}</p>`;
     if (qpcr && res.pairs.length) html += `<p class="learn">${T('For SYBR Green qPCR: one sharp melt-curve peak near this temperature means one clean product. A second, lower peak usually means primer-dimers. Run a no-template control.')}</p>`;
@@ -358,6 +359,13 @@
       if (d.share !== undefined) share('Primer order', pairText(S.pairs[+d.share], +d.share, region));
       if (d.pcr !== undefined) usePair(S.pairs[+d.pcr]);
       if (d.gel !== undefined) { S.usedPair = S.pairs[+d.gel]; show('gel'); if (window.DryLabGel) window.DryLabGel.run(); }
+      if (d.ai !== undefined && window.DryLabTools) {
+        const p = S.pairs[+d.ai];
+        window.DryLabTools.explain(e.target.closest('.pair'), 'a PCR primer pair', pairText(p, +d.ai, region) +
+          `\nForward primer: hairpin stem ${p.forward.hairpin || 0} bp, 3' self-dimer ${p.forward.selfDimer || 0} bp, problems: ${p.forward.issues.join(', ') || 'none'}` +
+          `\nReverse primer: hairpin stem ${p.reverse.hairpin || 0} bp, 3' self-dimer ${p.reverse.selfDimer || 0} bp, problems: ${p.reverse.issues.join(', ') || 'none'}` +
+          `\nPair problems: ${p.issues.join(', ') || 'none'}. Salt: Na+ ${o.cond.na} mM, Mg2+ ${o.cond.mg} mM.`);
+      }
     };
   }
 
@@ -396,11 +404,15 @@
       ${prog.additives.length ? `<h4>${T('Helpers for GC-rich DNA')}</h4><ul class="notes">` + prog.additives.map(n => `<li>${esc(T(n))}</li>`).join('') + '</ul>' : ''}
       <div class="row wrap"><button class="btn small" id="shareProg">${T('Share program')}</button>
       <button class="btn small" id="saveProg">${T('Save to notebook')}</button>
-      <button class="btn small" id="gelProg">${T('See on gel')}</button></div></div>`;
+      <button class="btn small" id="gelProg">${T('See on gel')}</button>
+      <button class="btn small" id="aiProg">${T('Explain with AI')}</button></div></div>`;
     drawProgram(prog);
     $('shareProg').onclick = () => share('PCR program', programText());
     $('saveProg').onclick = () => { if (window.DryLabLab) window.DryLabLab.newEntry(); };
     $('gelProg').onclick = () => { show('gel'); if (window.DryLabGel) window.DryLabGel.run(); };
+    $('aiProg').onclick = () => { if (window.DryLabTools) window.DryLabTools.explain($('pcrOut').firstElementChild, 'a PCR program', programText() +
+      `\nPrimer Tm ${S.pcrInput.tmF} and ${S.pcrInput.tmR} °C, product ${S.pcrInput.productLength} bp, GC ${S.pcrInput.productGC}%` +
+      (prog.notes.length ? '\nNotes: ' + prog.notes.join(' ') : '') + (prog.additives.length ? '\nAdditives: ' + prog.additives.join(' ') : '')); };
     mix();
   }
 

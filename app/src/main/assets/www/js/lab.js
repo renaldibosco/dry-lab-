@@ -170,13 +170,14 @@
     const body = el.querySelector('.ebody'), e = NB.list.find(x => x.id === el.dataset.id);
     if (!body.classList.contains('hidden')) { body.classList.add('hidden'); return; }
     body.innerHTML = `<pre class="out">${D.esc(entryText(e))}</pre><div class="ephoto"></div>
-      <div class="row wrap"><button class="btn small" data-nb="share">${T('Share')}</button><button class="btn small ghost" data-nb="del">${T('Delete')}</button></div>`;
+      <div class="row wrap"><button class="btn small" data-nb="share">${T('Share')}</button><button class="btn small" data-nb="rec">${T('Write lab record (AI)')}</button><button class="btn small ghost" data-nb="del">${T('Delete')}</button></div>`;
     body.classList.remove('hidden');
     if (e.photo) { const p = await getPhoto(e.id); if (p) body.querySelector('.ephoto').innerHTML = `<img src="${p}" alt="">`; }
     body.onclick = (ev) => {
       ev.stopPropagation();
       const a = ev.target.dataset.nb; if (!a) return;
       if (a === 'share') D.share(e.title, entryText(e));
+      if (a === 'rec' && window.DryLabTools) window.DryLabTools.writeRecord(e.id);
       if (a === 'del') {
         if (NB.del !== e.id) { NB.del = e.id; ev.target.textContent = T('Tap again to delete'); return; }
         NB.list = NB.list.filter(x => x.id !== e.id); saveList(); delPhoto(e.id); NB.del = null; renderList();
@@ -318,6 +319,6 @@
     D.onLang(() => { renderList(); showCalc(calcKey); const k = $('probOut').dataset.prob; if (k) troubleshoot(k); });
   }
 
-  window.DryLabLab = { newEntry, troubleshoot, PROBLEMS };
+  window.DryLabLab = { newEntry, troubleshoot, PROBLEMS, entries: () => NB.list, entryText };
   document.addEventListener('DOMContentLoaded', init);
 })();

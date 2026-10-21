@@ -22,7 +22,12 @@ Made by Paul Renaldi (Reno), B.Sc. Biotechnology, Arignar Anna College, Thiruvan
 
 Everything works with **no internet**. Your last sequence is remembered on the phone.
 
-**Ask AI (optional).** The Lab tab can send a question to an AI service you choose (Google Gemini, Anthropic Claude, or any OpenAI-compatible service), using **your own API key**. This is the only reason the app has the internet permission. Nothing is sent until you press Ask; the question (and, if you tick the box, a short summary of your current results) goes straight from your phone to that service over HTTPS. The key is saved only on your phone, and "Forget key" removes it. Never put API keys in code or share them, and never use keys found in other people's code.
+**Ask AI (optional).** The Lab tab can send a question to an AI service you choose (Google Gemini, Anthropic Claude, or any OpenAI-compatible service), using **your own API key**. The same key powers three study tools:
+- **Explain with AI** buttons on genes, primer pairs, the PCR program, the gel photo reading and the sequencing check: a plain-words explanation of that result.
+- **Viva practice**: the AI acts as a viva examiner on your own experiment, your Dry Lab project, or a topic (PCR, primers, gels, cloning, qPCR, sequencing, proteins). It asks one question at a time, marks each answer out of 10 and gives a model answer.
+- **Lab record writer**: turns your current results or a notebook entry into a practical-record write-up (Aim, Principle, Materials, Procedure, Result, Inference, Precautions) or a bench protocol, using only your own data.
+
+ This is the only reason the app has the internet permission. Nothing is sent until you press Ask; the question (and, if you tick the box, a short summary of your current results) goes straight from your phone to that service over HTTPS. The key is saved only on your phone, and "Forget key" removes it. Never put API keys in code or share them, and never use keys found in other people's code.
 
 ## Install
 
