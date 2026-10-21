@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Dry Lab</string>
     <string name="open_file">Open sequence file</string>
+    <string name="open_photo">Gel photo: camera or gallery</string>
 </resources>

@@ -117,3 +117,41 @@ nav.bottom button.on { color: var(--accent); }
 #toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%) translateY(20px); opacity: 0; pointer-events: none;
   background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 13px; transition: .25s; max-width: 90vw; text-align: center; }
 #toast.show { opacity: 1; transform: translateX(-50%); }
+
+/* ---------- 1.1 additions: header chips, 6-tab nav, gel, lab ---------- */
+.chips { display: flex; gap: 6px; flex: none; }
+nav.bottom button { min-width: 0; }
+nav.bottom button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+body.lang-ta nav.bottom button { font-size: 10px; }
+body.lang-ta h2 { font-size: 16px; }
+.annot { justify-content: space-between; border-bottom: 1px solid var(--line); padding: 6px 0; }
+.gelcard { padding: 10px; background: color-mix(in srgb, var(--card) 85%, #0b1020); }
+#gelCanvas { height: 440px; }
+#gelLegend table td:first-child { white-space: nowrap; }
+#photoCanvas { cursor: crosshair; border-radius: 10px; margin: 8px 0; touch-action: manipulation; background: #000; }
+.lane { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.lane .badge { margin-left: 4px; }
+.probs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.probs button { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 12px; padding: 10px 8px;
+  font: 600 13px system-ui, sans-serif; text-align: left; min-height: 46px; }
+.probs button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.cause { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.cause .num { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--bg); color: var(--muted);
+  display: flex; align-items: center; justify-content: center; font: 700 12px system-ui, sans-serif; }
+.cause.hit .num { background: var(--hot); color: #fff; }
+.cause p { margin: 3px 0 0; font-size: 14px; }
+.cause .found { color: var(--hot); font-weight: 600; }
+.entry { border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin: 8px 0; cursor: pointer; background: var(--bg); }
+.ehead { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ehead .muted { font-size: 12px; }
+.badge.bad { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+.ephoto img { width: 100%; border-radius: 10px; margin: 8px 0; display: block; }
+.seg.scroll { overflow-x: auto; scrollbar-width: none; }
+.seg.scroll button { flex: 0 0 auto; padding: 9px 12px; }
+.calcout { background: var(--bg); border-radius: 12px; padding: 12px; margin-top: 6px; }
+.calcout .big { font-size: 26px; font-weight: 800; color: var(--accent); }
+.calcout p { font-size: 14px; }
+.okline { color: var(--good); font-size: 13px; }
+#simChart { height: 210px; }
+td.sizes { overflow-wrap: anywhere; font-size: 12px; }
+.card, .calcout, .entry { min-width: 0; overflow-wrap: break-word; }

@@ -76,4 +76,35 @@ t('restriction sites', () => {
   assert.deepStrictEqual(c.find(x => x.name === 'EcoRI').positions, [3]);
   assert.deepStrictEqual(c.find(x => x.name === 'BamHI').positions, [11]);
 });
+t('digest: linear, circular, and a site across the join of a circle', () => {
+  const s = 'AAGAATTCAAAAAAAAAAGGATCCAAAAAAAAAAAAAAAAAAAAAAGAATTCTT';
+  assert.deepStrictEqual(B.digest(s, ['EcoRI', 'BamHI'], false).fragments.map(f => f.size), [3, 16, 28, 7]);
+  assert.deepStrictEqual(B.digest(s, ['EcoRI'], true).fragments.map(f => f.size), [44, 10]);
+  const c = 'TTC' + 'A'.repeat(41) + 'GGATCC' + 'A'.repeat(16) + 'GAA';
+  assert.deepStrictEqual(B.digest(c, ['EcoRI', 'BamHI'], true).fragments.map(f => f.size).sort((a, b) => a - b), [22, 47]);
+  assert.strictEqual(B.digest('ACGTACGT', ['EcoRI'], true).circularUncut, true);
+});
+t('gel: smaller DNA runs further; best agarose for the sizes', () => {
+  assert.ok(B.migration(100, 1) > B.migration(1000, 1) && B.migration(1000, 1) > B.migration(10000, 1));
+  assert.strictEqual(B.bestAgarose([150, 300]), 2);
+  assert.strictEqual(B.bestAgarose([700, 2500, 6000]), 1);
+});
+t('gel photo: ladder matching ignores labels/wells and finds sizes', () => {
+  const L = B.LADDERS['1kb'];
+  const ys = [67, 94, 112, 126, 172, 188, 220, 244, 280, 303, 334, 373, 424, 490, 578, 631, 687, 743];
+  const peaks = ys.map((y, i) => ({ y, strength: i < 4 ? 0.14 : [6, 10, 14].includes(i) ? 1 : 0.5 }));
+  const fit = B.fitLadder(peaks, L.sizes, L.bright);
+  assert.deepStrictEqual([fit.k, fit.j], [4, 0]);
+  const size = B.sizeFromPosition(fit.pairs, 334);                 // exactly on the 3000 band
+  assert.ok(Math.abs(size - 3000) < 1, size);
+  const mid = B.sizeFromPosition(fit.pairs, 354);                  // between 3000 and 2500
+  assert.ok(mid < 3000 && mid > 2500, mid);
+});
+t('lab calculators', () => {
+  assert.strictEqual(B.dilution(10, null, 1, 100).v1, 10);
+  assert.strictEqual(B.nucleicConc(0.5, 0.27, 0.24, 10, 'ds').ngPerUl, 250);
+  assert.ok(Math.abs(B.copies(1, 1000) - 9.265e8) / 9.265e8 < 0.001);
+  assert.strictEqual(B.agaroseGrams(1, 50), 0.5);
+  assert.deepStrictEqual(B.bufferRecipe('TBE 10x', 1000).items.map(i => i.amount), [108, 55, 40]);
+});
 console.log(`\n${n} tests passed`);

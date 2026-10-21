@@ -13,7 +13,10 @@
     <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><path d="M11 3h10M13 3v8L5 26a2.5 2.5 0 0 0 2.2 3.7h17.6A2.5 2.5 0 0 0 27 26L19 11V3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 21c3-2 5 2 8 0s4.5-1 5.5 0" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/></svg>
     <div><h1>Dry Lab</h1><p>Plan your PCR before the wet lab</p></div>
   </div>
-  <button id="learnBtn" class="chip on" aria-pressed="true" title="Show explanations">Learn mode</button>
+  <div class="chips">
+    <button id="langBtn" class="chip" title="English / Tamil">தமிழ்</button>
+    <button id="learnBtn" class="chip on" aria-pressed="true" title="Show explanations">Learn mode</button>
+  </div>
 </header>
 
 <main>
@@ -148,6 +151,12 @@
   <div id="pcrOut"></div>
 
   <div class="card">
+    <div class="title-row"><h3>Watch PCR copy your DNA</h3><button class="btn small" id="simBtn">Play</button></div>
+    <canvas id="simChart" height="210"></canvas>
+    <p class="learn">Every cycle doubles the DNA: 1 copy becomes 2, then 4, 8, 16... After 30 cycles one molecule becomes about a billion copies, enough to see as a band on a gel.</p>
+  </div>
+
+  <div class="card">
     <h3>Master mix calculator</h3>
     <div class="grid3">
       <label>Reactions<input type="number" id="mmN" value="8" min="1"></label>
@@ -162,8 +171,103 @@
   </div>
 </section>
 
-<!-- ============================== TOOLS ============================== -->
-<section id="tab-tools" class="tab">
+<!-- ============================== GEL ============================== -->
+<section id="tab-gel" class="tab">
+  <div class="card">
+    <h2>5. Virtual gel</h2>
+    <p class="learn">Agarose gel electrophoresis separates DNA by size: small pieces run fast and travel far, big pieces stay near the wells. Compare your bands with the ladder to read their size.</p>
+    <div class="grid2">
+      <label>Agarose %<select id="gelPct"><option value="auto" data-t>Auto (best for my bands)</option><option>0.7</option><option>1</option><option>1.5</option><option>2</option><option>3</option></select></label>
+      <label>DNA ladder<select id="gelLadder"></select></label>
+    </div>
+    <label class="check"><input type="checkbox" id="gelPcr" checked> My PCR product (from the Primers tab)</label>
+    <div class="grid3">
+      <label>Digest with<select id="gelEnz1"></select></label>
+      <label>and<select id="gelEnz2"></select></label>
+      <label class="check"><input type="checkbox" id="gelCirc"> Circular (plasmid)</label>
+    </div>
+    <label>My own band sizes (bp)<input id="gelCustom" placeholder="e.g. 450, 1200" inputmode="numeric"></label>
+    <button class="btn primary" id="gelBtn">Run gel</button>
+  </div>
+  <div id="gelOut" class="hidden">
+    <div class="card gelcard">
+      <canvas id="gelCanvas" height="440"></canvas>
+      <div id="gelLegend"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Read my gel photo</h2>
+    <p class="learn">Take a photo of your real gel. Tap the ladder lane, then tap each sample lane. Dry Lab finds the bands and measures their size from the ladder.</p>
+    <div class="row wrap">
+      <label class="btn primary"><input type="file" id="photoInput" accept="image/*" hidden>Open gel photo</label>
+      <label class="check"><input type="checkbox" id="photoInvert"> Dark bands on a light background</label>
+    </div>
+    <div id="photoTools" class="hidden">
+      <div class="seg" id="photoMode">
+        <button data-pm="ladder" class="on">1. Ladder lane</button>
+        <button data-pm="sample">2. Sample lanes</button>
+        <button data-pm="add">Add a band</button>
+      </div>
+      <div class="grid2">
+        <label>Ladder used<select id="photoLadder"></select></label>
+        <label>Top ladder band is<select id="photoTop"></select></label>
+      </div>
+      <canvas id="photoCanvas" height="300"></canvas>
+      <div id="photoOut"></div>
+      <div class="row wrap">
+        <button class="btn small" id="photoUndo">Undo last lane</button>
+        <button class="btn small" id="photoShare">Share sizes</button>
+        <button class="btn small" id="photoSave">Save to notebook</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== LAB ============================== -->
+<section id="tab-lab" class="tab">
+  <div class="card">
+    <h2>PCR troubleshooter</h2>
+    <p class="muted">What did you see on your gel?</p>
+    <div class="probs" id="probs">
+      <button data-prob="none">No band</button>
+      <button data-prob="weak">Weak band</button>
+      <button data-prob="extra">Extra bands</button>
+      <button data-prob="smear">Smear</button>
+      <button data-prob="dimer">Small band below 100 bp</button>
+      <button data-prob="size">Band is the wrong size</button>
+      <button data-prob="ntc">Band in the no-DNA control</button>
+    </div>
+    <div id="probOut"></div>
+  </div>
+
+  <div class="card">
+    <div class="title-row"><h2>Lab notebook</h2><button class="btn small primary" id="nbNew">New entry</button></div>
+    <div id="nbForm" class="hidden">
+      <label>Title<input id="nbTitle" placeholder="e.g. Gene 1 PCR, trial 2"></label>
+      <label>Result<select id="nbResult"><option value="worked" data-t>Worked</option><option value="partly" data-t>Partly worked</option><option value="failed" data-t>Did not work</option><option value="planned" data-t>Planned</option></select></label>
+      <label>Notes<textarea id="nbNotes" rows="3" placeholder="What you did, what you saw, what to change"></textarea></label>
+      <label class="btn small"><input type="file" id="nbPhoto" accept="image/*" hidden>Add gel photo</label>
+      <span id="nbPhotoName" class="muted"></span>
+      <label class="check"><input type="checkbox" id="nbAttach" checked> Attach my current primers and PCR program</label>
+      <div class="row"><button class="btn primary small" id="nbSave">Save</button><button class="btn ghost small" id="nbCancel">Cancel</button></div>
+    </div>
+    <div id="nbList"></div>
+  </div>
+
+  <div class="card">
+    <h2>Lab calculators</h2>
+    <div class="seg scroll" id="calcSeg">
+      <button data-calc="dil" class="on">Dilution</button>
+      <button data-calc="mol">Molarity</button>
+      <button data-calc="conc">DNA conc.</button>
+      <button data-calc="copy">Copies</button>
+      <button data-calc="gel">Agarose</button>
+      <button data-calc="buf">Buffers</button>
+    </div>
+    <div id="calcBox"></div>
+  </div>
+
   <div class="card">
     <h2>Quick tools</h2>
     <textarea id="toolIn" rows="4" spellcheck="false" placeholder="Paste a short DNA sequence or a primer"></textarea>
@@ -192,21 +296,26 @@
     <button class="btn" id="dimBtn">Check pair</button>
     <pre id="dimOut" class="out"></pre>
   </div>
-  <p class="about muted">Dry Lab 1.0. Works offline. Calculations: nearest-neighbour Tm (SantaLucia 1998), checked against Biopython. Planning tool only: always confirm in the lab.</p>
+  <p class="about muted">Dry Lab 1.1. Works offline. Calculations: nearest-neighbour Tm (SantaLucia 1998), checked against Biopython. Planning tool only: always confirm in the lab.</p>
 </section>
 </main>
 
 <nav class="bottom" id="nav">
-  <button data-tab="seq" class="on"><svg viewBox="0 0 24 24"><path d="M7 3c0 6 10 6 10 12s-10 6-10 6M17 3c0 6-10 6-10 12M8 7h8M8 17h8"/></svg>Sequence</button>
-  <button data-tab="genes"><svg viewBox="0 0 24 24"><path d="M3 12h14M13 7l5 5-5 5M3 6h4M3 18h4"/></svg>Genes</button>
-  <button data-tab="primers"><svg viewBox="0 0 24 24"><path d="M4 8h8M12 8l-3-3M20 16h-8M12 16l3 3M4 12h16"/></svg>Primers</button>
-  <button data-tab="pcr"><svg viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v9a4 4 0 1 1-4 0z M12 9v6"/></svg>PCR</button>
-  <button data-tab="tools"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 6-6-1.3-1.3a4 4 0 0 1-5-5L12 2l2 2z M3 21l4-4"/></svg>Tools</button>
+  <button data-tab="seq" class="on"><svg viewBox="0 0 24 24"><path d="M7 3c0 6 10 6 10 12s-10 6-10 6M17 3c0 6-10 6-10 12M8 7h8M8 17h8"/></svg><span>Sequence</span></button>
+  <button data-tab="genes"><svg viewBox="0 0 24 24"><path d="M3 12h14M13 7l5 5-5 5M3 6h4M3 18h4"/></svg><span>Genes</span></button>
+  <button data-tab="primers"><svg viewBox="0 0 24 24"><path d="M4 8h8M12 8l-3-3M20 16h-8M12 16l3 3M4 12h16"/></svg><span>Primers</span></button>
+  <button data-tab="pcr"><svg viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v9a4 4 0 1 1-4 0z M12 9v6"/></svg><span>PCR</span></button>
+  <button data-tab="gel"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h3M13 7h3M8 11h3M13 14h3M8 16h3"/></svg><span>Gel</span></button>
+  <button data-tab="lab"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3M7.5 14h9"/></svg><span>Lab</span></button>
 </nav>
 <div id="toast" role="status"></div>
 
 <script src="js/demo.js"></script>
 <script src="js/bio.js"></script>
+<script src="js/ta.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/app.js"></script>
+<script src="js/gel.js"></script>
+<script src="js/lab.js"></script>
 </body>
 </html>

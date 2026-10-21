@@ -1,7 +1,7 @@
 # Dry Lab
 
-**Plan your PCR on your phone before you touch the wet lab.**
-An offline Android app for biotechnology students and small labs: paste or open a DNA sequence and get its genes, start and stop codons, GC/AT content, PCR primers, and the full thermocycler temperature program.
+**From DNA sequence to gel result, in your pocket, in English and Tamil.**
+An offline Android app for biotechnology students and small labs: open a DNA sequence and get its genes, start and stop codons, GC/AT content, PCR primers and the full temperature program; see the expected gel; then photograph your real gel and let the app measure the bands.
 
 Made by Paul Renaldi (Reno), B.Sc. Biotechnology, Arignar Anna College, Thiruvannamalai.
 
@@ -13,9 +13,12 @@ Made by Paul Renaldi (Reno), B.Sc. Biotechnology, Arignar Anna College, Thiruvan
 | **Genes** | Every open reading frame on both strands: **start codon and stop codon with exact positions**, length in bp and amino acids, protein sequence and size (kDa). Genes listed inside GenBank files are shown too. |
 | **Primers** | Three modes: copy a whole gene (primers on the exact start and stop), amplify around a region, or best pair anywhere. Checks Tm, GC %, 3' G/C clamp, base runs, repeats, hairpins, self-dimers, primer-dimers and extra binding sites. Optional restriction sites on primer ends for cloning. |
 | **PCR** | Annealing temperature, the full program (denaturation, annealing, extension, cycles, hold) with a temperature chart, extension time from product length, touchdown option, polymerase presets, **heat advice for GC-rich and AT-rich DNA** (98 °C, DMSO, betaine, two-step PCR), gradient range, run time, and a **master mix calculator**. |
-| **Tools** | Reverse complement, complement, DNA to RNA, translation in 6 frames, primer Tm, primer checker, motif search, restriction sites (18 enzymes), primer-dimer check. |
+| **Gel** | **Virtual agarose gel**: ladders (50 bp, 100 bp, 1 kb), your PCR product, restriction digests of linear or circular DNA, your own sizes; picks the best agarose %. **Gel photo reader**: take or open a photo of a real gel, tap the ladder and sample lanes, and the app finds the bands and measures their sizes (tested within about 5% on simulated gels), and checks them against your expected PCR product. |
+| **Lab** | **PCR troubleshooter** (no band, weak band, extra bands, smear, primer-dimer, wrong size, contaminated control) that checks *your own* primers, Ta, GC and cycles. **Lab notebook** with gel photos, primers and program attached. **Calculators**: dilution, molarity, DNA concentration and purity (A260/280, A260/230), copy number, agarose, TAE/TBE recipes. Quick sequence tools. |
 
 **Learn mode** explains every result in plain words, so students learn why a value matters, not just the number.
+**Tamil mode** switches the whole app between English and தமிழ்.
+**PCR animation** shows the DNA doubling every cycle with the temperature moving through each step.
 
 It works with **no internet** and sends nothing anywhere. Your last sequence is remembered on the phone.
 
@@ -32,6 +35,7 @@ Needs Android 8.0 or newer.
 - **Genes**: bacterial genetic code (NCBI table 11). ATG start by default, GTG/TTG optional. Checked against Biopython translation.
 - **Annealing temperature**: lower primer Tm − 4 °C for Taq, + 3 °C for Phusion/Q5-type enzymes, with the Rychlik formula as a second estimate.
 - **Product Tm**: 81.5 + 16.6 log[Na⁺] + 0.41 (%GC) − 675/length.
+- **Gel photo sizes**: band peaks are found along each lane; the ladder is matched by trying every alignment and keeping the one whose sizes follow a smooth curve and whose reference bands are brightest; sizes are read by log-linear interpolation between the nearest ladder bands. `tests` include 8 simulated gels (0.7-3% agarose, inverted, blurred, photo-like).
 
 Dry Lab is a planning and teaching tool. Always confirm results in the lab.
 
@@ -51,9 +55,9 @@ Open `app/src/main/assets/www/index.html` in a browser to try it on a computer.
 
 ## Roadmap
 
-- Tamil and other Indian-language screens
-- qPCR primers and probes; agarose gel band preview
+- More Indian languages (Hindi, Telugu, Malayalam, Kannada)
+- qPCR primers and probes, standard curves and ΔΔCt
+- Low-cost hardware: ESP32 + Peltier mini thermocycler and a blue-LED gel box, both controlled from the app
 - Primer specificity search against whole genomes
 - Plasmid map drawing and cloning simulation (cut, ligate, check reading frame)
-- Lab notebook with photo of the gel attached to each experiment
 - Shared class mode for teachers

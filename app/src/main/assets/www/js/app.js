@@ -1,9 +1,9 @@
-/* Dry Lab - screens. Uses the engine in bio.js (window.Bio). */
+/* Dry Lab - main screens (Sequence, Genes, Primers, PCR, quick tools). Engine: bio.js. Words: i18n.js. */
 (function () {
   'use strict';
-  const B = window.Bio;
+  const B = window.Bio, I = window.I18N, T = I.T;
   const $ = (id) => document.getElementById(id);
-  const S = { recs: [], rec: null, orfs: [], target: null, mode: 'exact', pairs: [], program: null };
+  const S = { recs: [], rec: null, orfs: [], mode: 'exact', pairs: [], usedPair: null, design: null, program: null, pcrInput: null };
   const fmtN = (n) => Number(n).toLocaleString('en-IN');
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const store = {
@@ -11,23 +11,24 @@
     set(k, v) { try { localStorage.setItem('drylab.' + k, v); } catch (e) { /* storage full or blocked */ } },
   };
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const showHooks = {}, langHooks = [];
 
   // ------------------------------------------------------------ helpers
   let toastTimer;
   function toast(msg) {
     const t = $('toast');
     t.textContent = msg; t.classList.add('show');
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
   }
   function copy(text) {
-    if (window.Android && Android.copy) { Android.copy(text); toast('Copied'); return; }
+    if (window.Android && Android.copy) { Android.copy(text); toast(T('Copied')); return; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => toast('Copied'), () => fallbackCopy(text));
+      navigator.clipboard.writeText(text).then(() => toast(T('Copied')), () => fallbackCopy(text));
     } else fallbackCopy(text);
   }
   function fallbackCopy(text) {
     const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); toast('Copied'); } catch (e) { toast('Could not copy'); }
+    try { document.execCommand('copy'); toast(T('Copied')); } catch (e) { toast(T('Could not copy')); }
     ta.remove();
   }
   function share(title, text) {
@@ -43,6 +44,7 @@
     if (tab === 'seq' && S.rec) drawGC();
     if (tab === 'genes' && S.orfs.length) drawOrfMap();
     if (tab === 'pcr' && S.program) drawProgram(S.program);
+    if (showHooks[tab]) showHooks[tab]();
   }
   function prepCanvas(cv) {
     const r = window.devicePixelRatio || 1, w = cv.clientWidth || 320, h = cv.clientHeight || +cv.getAttribute('height');
@@ -51,11 +53,15 @@
     g.font = '11px system-ui, sans-serif';
     return { g, w, h };
   }
+  function conditions() {
+    return { na: +$('cNa').value || 50, mg: +$('cMg').value || 0, dntp: +$('cDntp').value || 0, primerNM: +$('cPrimer').value || 250 };
+  }
+  const fmtTime = (s, hold) => hold ? T('forever') : s >= 60 ? (s % 60 ? Math.floor(s / 60) + ' min ' + (s % 60) + ' s' : s / 60 + ' min') : s + ' s';
 
   // ------------------------------------------------------------ 1. sequence
-  function analyze(text) {
+  function analyze(text, quiet) {
     const recs = B.parseInput(text).filter(r => r.seq.length);
-    if (!recs.length) { toast('No DNA found. Paste a sequence or open a file.'); return; }
+    if (!recs.length) { if (!quiet) toast(T('No DNA found. Paste a sequence or open a file.')); return; }
     S.recs = recs;
     const sel = $('recordSelect');
     sel.innerHTML = recs.map((r, i) => `<option value="${i}">${esc(r.name)} (${fmtN(r.seq.length)} bp)</option>`).join('');
@@ -66,24 +72,29 @@
 
   function pick(i) {
     S.rec = S.recs[i];
-    const r = S.rec, st = B.stats(r.seq);
+    renderSeq();
+    runOrfs(true);
+    renderSites();
+  }
+
+  function renderSeq() {
+    const r = S.rec; if (!r) return;
+    const st = B.stats(r.seq);
     $('seqResult').classList.remove('hidden');
     $('seqName').textContent = r.name;
     $('seqFormat').textContent = r.format;
     $('warnings').innerHTML = (r.description ? `<p class="muted">${esc(r.description)}</p>` : '') +
-      r.warnings.map(w => `<p class="warn">${esc(w)}</p>`).join('');
+      r.warnings.map(w => `<p class="warn">${esc(T(w))}</p>`).join('');
     $('sLen').textContent = fmtN(st.length);
     $('sGC').textContent = st.gc + '%';
     $('sAT').textContent = st.at + '%';
     $('gcFill').style.width = st.gc + '%';
     $('sCounts').innerHTML = Object.entries(st.counts).filter(([k, v]) => v || k !== 'N')
       .map(([k, v]) => `<span>${k} ${fmtN(v)}</span>`).join('');
-    const mw = st.mwDs;
-    $('sMw').textContent = 'Double-stranded mass about ' + (mw > 1e6 ? (mw / 1e6).toFixed(2) + ' MDa' : (mw / 1e3).toFixed(1) + ' kDa') +
-      (st.gc >= 65 ? '. GC-rich: plan extra heat for PCR (see the PCR tab).' : st.gc <= 35 ? '. AT-rich: melts easily.' : '.');
+    const mw = st.mwDs, mass = mw > 1e6 ? (mw / 1e6).toFixed(2) + ' MDa' : (mw / 1e3).toFixed(1) + ' kDa';
+    $('sMw').textContent = T('Double-stranded mass about {m}.', { m: mass }) + ' ' +
+      (st.gc >= 65 ? T('GC-rich: plan extra heat for PCR (see the PCR tab).') : st.gc <= 35 ? T('AT-rich: melts easily.') : '');
     drawGC();
-    runOrfs(true);
-    renderSites();
   }
 
   function drawGC() {
@@ -94,48 +105,55 @@
     const y = (v) => 6 + ph * (1 - v / 100), x = (p) => padL + pw * (p / Math.max(1, L));
     g.strokeStyle = css('--line'); g.fillStyle = css('--muted'); g.lineWidth = 1;
     for (const v of [0, 50, 100]) { g.beginPath(); g.moveTo(padL, y(v)); g.lineTo(w - 6, y(v)); g.stroke(); g.fillText(v + '%', 2, y(v) + 4); }
+    // shade the GC-rich zone
+    g.fillStyle = css('--hot'); g.globalAlpha = 0.07; g.fillRect(padL, y(100), pw, y(65) - y(100)); g.globalAlpha = 1;
     g.setLineDash([5, 4]); g.strokeStyle = css('--hot');
     g.beginPath(); g.moveTo(padL, y(65)); g.lineTo(w - 6, y(65)); g.stroke(); g.setLineDash([]);
     g.fillStyle = css('--muted'); g.fillText('1', padL, h - 4);
     const end = fmtN(L) + ' bp'; g.fillText(end, w - 6 - g.measureText(end).width, h - 4);
-    g.strokeStyle = css('--gc'); g.lineWidth = 2; g.beginPath();
+    const grad = g.createLinearGradient(0, y(100), 0, y(0));
+    grad.addColorStop(0, css('--hot')); grad.addColorStop(0.35, css('--gc')); grad.addColorStop(1, css('--gc'));
+    g.strokeStyle = grad; g.lineWidth = 2; g.beginPath();
     pts.forEach((p, i) => { const px = pts.length === 1 ? padL + pw / 2 : x(p.pos), py = y(p.gc); i ? g.lineTo(px, py) : g.moveTo(px, py); });
     g.stroke();
   }
 
   // ------------------------------------------------------------ 2. genes
   function runOrfs(quiet) {
-    if (!S.rec) { if (!quiet) toast('Analyze a sequence first'); return; }
-    const seq = S.rec.seq;
-    S.orfs = B.findOrfs(seq, {
+    if (!S.rec) { if (!quiet) toast(T('Analyze a sequence first')); return; }
+    S.orfs = B.findOrfs(S.rec.seq, {
       minAA: Math.max(10, +$('minAA').value || 100),
       starts: $('altStarts').checked ? ['ATG', 'GTG', 'TTG'] : ['ATG'],
       bothStrands: $('bothStrands').checked, partial: $('partial').checked,
     });
+    renderGenes();
+    fillTargets();
+    if (!quiet) toast(T('{n} genes found', { n: S.orfs.length }));
+  }
+
+  function renderGenes() {
     $('genesEmpty').classList.add('hidden');
     $('orfMapCard').classList.remove('hidden');
-    $('orfCount').textContent = S.orfs.length ? `${S.orfs.length} gene${S.orfs.length > 1 ? 's' : ''} found (longest first)`
-      : 'No genes found with these settings. Try a smaller "shortest gene" number.';
+    $('orfCount').textContent = S.orfs.length ? T('{n} genes found (longest first)', { n: S.orfs.length })
+      : T('No genes found with these settings. Try a smaller "shortest gene" number.');
     renderAnnotated();
     renderOrfs();
     drawOrfMap();
-    fillTargets();
-    if (!quiet) toast(S.orfs.length + ' genes found');
   }
 
   function orfCard(o, i) {
-    const cod = (lab, c, at, cls) => `<span class="codon ${cls}">${lab} ${c} at ${fmtN(at[0])}-${fmtN(at[1])}</span>`;
+    const cod = (lab, c, at, cls) => `<span class="codon ${cls}">${T(lab)} ${c} ${T('at')} ${fmtN(at[0])}-${fmtN(at[1])}</span>`;
     return `<div class="card orf" data-i="${i}">
-      <div class="head"><b>Gene #${i + 1}</b><span class="tag">${o.strand} strand${o.complete ? '' : ' - no stop'}</span></div>
-      <div class="codons">${cod('Start', o.startCodon, o.startCodonAt, 'start')}${o.complete ? cod('Stop', o.stopCodon, o.stopCodonAt, 'stop') : '<span class="codon stop">No stop before the end</span>'}</div>
-      <div class="kv"><span><b>${fmtN(o.lengthNt)}</b> bp</span><span><b>${fmtN(o.lengthAA)}</b> amino acids</span><span>~<b>${o.proteinKDa}</b> kDa protein</span><span>frame ${o.frame > 0 ? '+' : ''}${o.frame}</span></div>
+      <div class="head"><b>${T('Gene')} #${i + 1}</b><span class="tag">${o.strand} ${T('strand')}${o.complete ? '' : ' - ' + T('no stop')}</span></div>
+      <div class="codons">${cod('Start', o.startCodon, o.startCodonAt, 'start')}${o.complete ? cod('Stop', o.stopCodon, o.stopCodonAt, 'stop') : `<span class="codon stop">${T('No stop before the end')}</span>`}</div>
+      <div class="kv"><span><b>${fmtN(o.lengthNt)}</b> bp</span><span><b>${fmtN(o.lengthAA)}</b> ${T('amino acids')}</span><span>~<b>${o.proteinKDa}</b> ${T('kDa protein')}</span><span>${T('frame')} ${o.frame > 0 ? '+' : ''}${o.frame}</span></div>
       <div class="more hidden"></div></div>`;
   }
 
   function renderOrfs(limit) {
     limit = limit || 50;
     const list = S.orfs.slice(0, limit).map(orfCard).join('');
-    $('orfList').innerHTML = list + (S.orfs.length > limit ? `<button class="btn wide" id="moreOrfs">Show more (${S.orfs.length - limit} left)</button>` : '');
+    $('orfList').innerHTML = list + (S.orfs.length > limit ? `<button class="btn wide" id="moreOrfs">${T('Show more ({n} left)', { n: S.orfs.length - limit })}</button>` : '');
     const m = $('moreOrfs'); if (m) m.onclick = () => renderOrfs(limit + 100);
   }
 
@@ -144,13 +162,13 @@
     if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
     const cds = o.cds;
     const mid = cds.length > 1800 ? esc(cds.slice(3, 900)) + ' ... ' + esc(cds.slice(-900, o.complete ? -3 : undefined)) : esc(cds.slice(3, o.complete ? -3 : undefined));
-    box.innerHTML = `<p class="lab muted">Gene DNA (start in green, stop in red), read 5' to 3'</p>
+    box.innerHTML = `<p class="lab muted">${T("Gene DNA (start in green, stop in red), read 5' to 3'")}</p>
       <div class="seqbox"><span class="s">${o.startCodon}</span>${mid}${o.complete ? `<span class="e">${o.stopCodon}</span>` : ''}</div>
-      <p class="lab muted">Protein (${fmtN(o.lengthAA)} amino acids)</p><div class="seqbox">${esc(o.protein)}</div>
-      <p class="learn">This is a possible gene. Real genes usually also have a ribosome binding site (like AGGAGG) a few bases before the start codon.</p>
-      <div class="row wrap"><button class="btn primary small" data-act="primers">Design primers</button>
-      <button class="btn small" data-act="cprot">Copy protein</button><button class="btn small" data-act="cdna">Copy DNA</button>
-      <button class="btn small" data-act="share">Share</button></div>`;
+      <p class="lab muted">${T('Protein ({n} amino acids)', { n: fmtN(o.lengthAA) })}</p><div class="seqbox">${esc(o.protein)}</div>
+      <p class="learn">${T('This is a possible gene. Real genes usually also have a ribosome binding site (like AGGAGG) a few bases before the start codon.')}</p>
+      <div class="row wrap"><button class="btn primary small" data-act="primers">${T('Design primers')}</button>
+      <button class="btn small" data-act="cprot">${T('Copy protein')}</button><button class="btn small" data-act="cdna">${T('Copy DNA')}</button>
+      <button class="btn small" data-act="share">${T('Share')}</button></div>`;
     box.classList.remove('hidden');
     box.onclick = (e) => {
       e.stopPropagation();
@@ -166,10 +184,10 @@
     const el = $('annotated'), genes = (S.rec && S.rec.genes) || [];
     if (!genes.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
     el.classList.remove('hidden');
-    el.innerHTML = `<div class="card"><h3>Genes listed in the file (${genes.length})</h3>` +
-      genes.slice(0, 200).map((g, i) => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0">
-        <span><b>${esc(g.tag || 'gene ' + (i + 1))}</b> ${esc(g.product || '')}<br><span class="muted">${fmtN(g.start)}-${fmtN(g.end)} (${g.strand}), ${fmtN(g.end - g.start + 1)} bp</span></span>
-        <button class="btn small" data-ann="${i}">Primers</button></div>`).join('') + '</div>';
+    el.innerHTML = `<div class="card"><h3>${T('Genes listed in the file ({n})', { n: genes.length })}</h3>` +
+      genes.slice(0, 200).map((g, i) => `<div class="row annot">
+        <span><b>${esc(g.tag || T('Gene') + ' ' + (i + 1))}</b> ${esc(g.product || '')}<br><span class="muted">${fmtN(g.start)}-${fmtN(g.end)} (${g.strand}), ${fmtN(g.end - g.start + 1)} bp</span></span>
+        <button class="btn small" data-ann="${i}">${T('Primers')}</button></div>`).join('') + '</div>';
     el.onclick = (e) => {
       const i = e.target.dataset.ann; if (i === undefined) return;
       $('targetSelect').value = 'ann:' + i; onTarget(); show('primers');
@@ -181,6 +199,9 @@
     const cv = $('orfMap'); const { g, w, h } = prepCanvas(cv);
     const L = S.rec.seq.length, pad = 8, mid = h / 2, x = (p) => pad + (w - 2 * pad) * (p - 1) / Math.max(1, L - 1);
     g.strokeStyle = css('--muted'); g.lineWidth = 2; g.beginPath(); g.moveTo(pad, mid); g.lineTo(w - pad, mid); g.stroke();
+    // ruler ticks
+    g.lineWidth = 1;
+    for (let k = 1; k < 10; k++) { const xx = pad + (w - 2 * pad) * k / 10; g.beginPath(); g.moveTo(xx, mid - 3); g.lineTo(xx, mid + 3); g.stroke(); }
     g.fillStyle = css('--muted'); g.fillText('1', pad, h - 2);
     const lab = fmtN(L) + ' bp'; g.fillText(lab, w - pad - g.measureText(lab).width, h - 2);
     S.orfs.slice(0, 60).forEach((o, i) => {
@@ -204,9 +225,9 @@
 
   function fillTargets() {
     const sel = $('targetSelect'), prev = sel.value;
-    let html = S.orfs.slice(0, 40).map((o, i) => `<option value="orf:${i}">Gene #${i + 1}: ${fmtN(o.start)}-${fmtN(o.end)} (${o.strand}), ${o.lengthAA} aa</option>`).join('');
-    html += ((S.rec && S.rec.genes) || []).slice(0, 200).map((g, i) => `<option value="ann:${i}">${esc(g.tag || 'File gene ' + (i + 1))}: ${esc((g.product || '').slice(0, 30))} ${fmtN(g.start)}-${fmtN(g.end)}</option>`).join('');
-    html += '<option value="custom">My own region (choose bases)</option><option value="all">Whole sequence</option>';
+    let html = S.orfs.slice(0, 40).map((o, i) => `<option value="orf:${i}">${T('Gene')} #${i + 1}: ${fmtN(o.start)}-${fmtN(o.end)} (${o.strand}), ${o.lengthAA} aa</option>`).join('');
+    html += ((S.rec && S.rec.genes) || []).slice(0, 200).map((g, i) => `<option value="ann:${i}">${esc(g.tag || T('File gene') + ' ' + (i + 1))}: ${esc((g.product || '').slice(0, 30))} ${fmtN(g.start)}-${fmtN(g.end)}</option>`).join('');
+    html += `<option value="custom">${T('My own region (choose bases)')}</option><option value="all">${T('Whole sequence')}</option>`;
     sel.innerHTML = html;
     if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
     onTarget();
@@ -222,7 +243,7 @@
   function setMode(m) {
     S.mode = m;
     document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
-    $('modeHelp').textContent = MODE_HELP[m];
+    $('modeHelp').textContent = T(MODE_HELP[m]);
   }
 
   function currentRegion() {
@@ -237,12 +258,8 @@
     return { start: 1, end: L, strand: '+', label: 'whole sequence' };
   }
 
-  function conditions() {
-    return { na: +$('cNa').value || 50, mg: +$('cMg').value || 0, dntp: +$('cDntp').value || 0, primerNM: +$('cPrimer').value || 250 };
-  }
-
   function design() {
-    if (!S.rec) { toast('Analyze a sequence first'); show('seq'); return; }
+    if (!S.rec) { toast(T('Analyze a sequence first')); show('seq'); return; }
     const region = currentRegion();
     const tail = (id) => { const e = $(id).value; return e ? 'GCGC' + B.ENZYMES[e] : ''; };
     const o = {
@@ -253,20 +270,22 @@
     };
     if (o.lenMax < o.lenMin) [o.lenMin, o.lenMax] = [o.lenMax, o.lenMin];
     const mode = region.label === 'whole sequence' && S.mode === 'flank' ? 'anywhere' : S.mode;
-    if (mode === 'exact' && region.end - region.start + 1 < 2 * o.lenMin) { toast('This region is too short for two primers'); return; }
-    $('primerOut').innerHTML = '<div class="card muted">Designing primers...</div>';
+    if (mode === 'exact' && region.end - region.start + 1 < 2 * o.lenMin) { toast(T('This region is too short for two primers')); return; }
+    $('primerOut').innerHTML = `<div class="card muted">${T('Designing primers...')}</div>`;
     setTimeout(() => {
       const res = B.designPrimers(S.rec.seq, region, mode, o);
       S.pairs = res.pairs;
-      renderPairs(res, region, o);
+      S.design = { res, region, o };
+      renderPairs();
+      if (res.pairs.length) $('primerOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 30);
   }
 
   function primerHtml(lab, p, tail) {
-    const issues = p.issues.length ? p.issues.map(i => `<span class="badge">${esc(i)}</span>`).join('') : '<span class="badge ok">No problems found</span>';
-    return `<div class="primer"><div class="lab">${lab} primer, 5' to 3'</div>
+    const issues = p.issues.length ? p.issues.map(i => `<span class="badge">${esc(T(i))}</span>`).join('') : `<span class="badge ok">${T('No problems found')}</span>`;
+    return `<div class="primer"><div class="lab">${T(lab + " primer, 5' to 3'")}</div>
       <code>${tail ? `<i>${esc(tail.toLowerCase())}</i>` : ''}${esc(p.seq)}</code>
-      <div class="kv"><span><b>${p.length}</b> bases</span><span>Tm <b>${p.tm} °C</b></span><span>GC <b>${p.gc}%</b></span><span>binds ${fmtN(p.start)}-${fmtN(p.end)}</span></div>
+      <div class="kv"><span><b>${p.length}</b> ${T('bases')}</span><span>Tm <b>${p.tm} °C</b></span><span>GC <b>${p.gc}%</b></span><span>${T('binds')} ${fmtN(p.start)}-${fmtN(p.end)}</span></div>
       <div class="badges">${issues}</div></div>`;
   }
 
@@ -277,29 +296,33 @@
       `Product ${p.productSize} bp, GC ${p.productGC}%`;
   }
 
-  function renderPairs(res, region, o) {
-    let html = res.notes.map(n => `<div class="card warn">${esc(n)}</div>`).join('');
+  function renderPairs() {
+    if (!S.design) return;
+    const { res, region, o } = S.design;
+    let html = res.notes.map(n => `<div class="card warn">${esc(T(n))}</div>`).join('');
     res.pairs.forEach((p, i) => {
-      const pi = p.issues.length ? p.issues.map(x => `<span class="badge">${esc(x)}</span>`).join('') : '';
-      html += `<div class="card pair"><h3>Pair ${i + 1}${i === 0 ? ' <span class="tag">best</span>' : ''}</h3>
+      const pi = p.issues.length ? p.issues.map(x => `<span class="badge">${esc(T(x))}</span>`).join('') : '';
+      html += `<div class="card pair"><h3>${T('Pair')} ${i + 1}${i === 0 ? ` <span class="tag">${T('best')}</span>` : ''}</h3>
         ${primerHtml('Forward', p.forward, o.fTail)}${primerHtml('Reverse', p.reverse, o.rTail)}
-        <div class="kv"><span>Product <b>${fmtN(p.productSize)} bp</b></span><span>GC <b>${p.productGC}%</b></span><span>Tm gap <b>${p.tmDiff} °C</b></span></div>
+        <div class="kv"><span>${T('Product')} <b>${fmtN(p.productSize)} bp</b></span><span>GC <b>${p.productGC}%</b></span><span>${T('Tm gap')} <b>${p.tmDiff} °C</b></span></div>
         <div class="badges">${pi}</div>
-        <div class="row wrap"><button class="btn primary small" data-pcr="${i}">Use for PCR &rarr;</button>
-        <button class="btn small" data-copy="${i}">Copy</button><button class="btn small" data-share="${i}">Share order</button></div></div>`;
+        <div class="row wrap"><button class="btn primary small" data-pcr="${i}">${T('Use for PCR')} &rarr;</button>
+        <button class="btn small" data-gel="${i}">${T('See on gel')}</button>
+        <button class="btn small" data-copy="${i}">${T('Copy')}</button><button class="btn small" data-share="${i}">${T('Share order')}</button></div></div>`;
     });
-    if (res.pairs.length) html += `<p class="learn">Tm here is the nearest-neighbour value for your salt settings, like Primer3. The simple classroom rule 2(A+T) + 4(G+C) gives ${res.pairs[0].forward.tmBasic} °C for the first forward primer. Order primers as standard desalted oligos, 25 nmol scale.</p>`;
+    if (res.pairs.length) html += `<p class="learn">${T('Tm here is the nearest-neighbour value for your salt settings, like Primer3. The simple classroom rule 2(A+T) + 4(G+C) gives {t} °C for the first forward primer. Order primers as standard desalted oligos, 25 nmol scale.', { t: res.pairs[0].forward.tmBasic })}</p>`;
     $('primerOut').innerHTML = html;
     $('primerOut').onclick = (e) => {
       const d = e.target.dataset;
       if (d.copy !== undefined) copy(pairText(S.pairs[+d.copy], +d.copy, region));
       if (d.share !== undefined) share('Primer order', pairText(S.pairs[+d.share], +d.share, region));
       if (d.pcr !== undefined) usePair(S.pairs[+d.pcr]);
+      if (d.gel !== undefined) { S.usedPair = S.pairs[+d.gel]; show('gel'); if (window.DryLabGel) window.DryLabGel.run(); }
     };
-    if (res.pairs.length) $('primerOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function usePair(p) {
+    S.usedPair = p;
     $('pcrTmF').value = p.forward.tm; $('pcrTmR').value = p.reverse.tm;
     $('pcrLen').value = p.productSize; $('pcrGC').value = p.productGC;
     show('pcr'); makeProgram();
@@ -307,48 +330,60 @@
 
   // ------------------------------------------------------------ 4. PCR
   function makeProgram() {
-    const prog = B.pcrProgram({
+    S.pcrInput = {
       tmF: +$('pcrTmF').value, tmR: +$('pcrTmR').value, productLength: Math.max(20, +$('pcrLen').value || 500),
       productGC: +$('pcrGC').value || 50, polymerase: $('pcrPol').value, cycles: +$('pcrCycles').value || 30,
       touchdown: $('pcrTouch').checked,
-    });
-    S.program = prog;
+    };
+    S.program = B.pcrProgram(S.pcrInput);
+    renderProgram();
+  }
+
+  function renderProgram() {
+    const prog = S.program; if (!prog) return;
     const cls = (t) => t >= 90 ? 'hot' : t >= 70 ? 'warm' : 'cool';
-    const time = (s, hold) => hold ? 'forever' : s >= 60 ? (s % 60 ? Math.floor(s / 60) + ' min ' + (s % 60) + ' s' : s / 60 + ' min') : s + ' s';
-    const rows = prog.steps.map(s => `<tr><td>${esc(s.name)}</td><td class="num"><span class="temp ${cls(s.temp)}">${s.temp} °C</span></td>
-      <td class="num">${time(s.sec, s.hold)}</td><td class="num">${s.cycles > 1 ? 'x' + s.cycles : ''}</td></tr>`).join('');
-    const pol = $('pcrPol').value;
-    const rule = pol === 'hifi' ? 'lower primer Tm + 3 °C (high-fidelity enzymes like a hotter annealing step)' : 'lower primer Tm - 4 °C';
+    const rows = prog.steps.map(s => `<tr><td>${esc(T(s.name))}</td><td class="num"><span class="temp ${cls(s.temp)}">${s.temp} °C</span></td>
+      <td class="num">${fmtTime(s.sec, s.hold)}</td><td class="num">${s.cycles > 1 ? 'x' + s.cycles : ''}</td></tr>`).join('');
+    const rule = S.pcrInput.polymerase === 'hifi' ? T('lower primer Tm + 3 °C (high-fidelity enzymes like a hotter annealing step)') : T('lower primer Tm - 4 °C');
     $('pcrOut').innerHTML = `<div class="card">
-      <div class="ta"><b>${prog.ta} °C</b><span>annealing temperature (Ta)</span></div>
-      <p class="muted">From ${rule}: lower Tm is ${prog.lowerTm} °C. A second method (Rychlik) suggests ${prog.rychlik} °C.</p>
-      <p class="learn">Too low Ta: primers also stick to wrong places (extra bands). Too high: they do not stick at all (no band). Not sure? Use a gradient from <b>${prog.gradient[0]} °C</b> to <b>${prog.gradient[1]} °C</b> and keep the best lane.</p>
+      <div class="ta"><b>${prog.ta} °C</b><span>${T('annealing temperature (Ta)')}</span></div>
+      <p class="muted">${T('From {rule}: lower Tm is {tm} °C. A second method (Rychlik) suggests {r} °C.', { rule, tm: prog.lowerTm, r: prog.rychlik })}</p>
+      <p class="learn">${T('Too low Ta: primers also stick to wrong places (extra bands). Too high: they do not stick at all (no band). Not sure? Use a gradient from {a} °C to {b} °C and keep the best lane.', { a: prog.gradient[0], b: prog.gradient[1] })}</p>
       <canvas id="pcrChart" height="170"></canvas>
-      <table><tr><th>Step</th><th class="num">Temp</th><th class="num">Time</th><th class="num">Cycles</th></tr>${rows}</table>
-      <p class="muted">${esc(prog.polymerase)}. Extension ${prog.extensionSec} s for ${fmtN(prog.productLength)} bp. About <b>${prog.minutes} min</b> in the machine.</p>
-      ${prog.notes.length ? '<h4>Heat notes</h4><ul class="notes">' + prog.notes.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>' : ''}
-      ${prog.additives.length ? '<h4>Helpers for GC-rich DNA</h4><ul class="notes">' + prog.additives.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>' : ''}
-      <button class="btn small" id="shareProg">Share program</button></div>`;
+      <table><tr><th>${T('Step')}</th><th class="num">${T('Temp')}</th><th class="num">${T('Time')}</th><th class="num">${T('Cycles')}</th></tr>${rows}</table>
+      <p class="muted">${T('{pol}. Extension {s} s for {len} bp. About {min} min in the machine.', { pol: T(prog.polymerase), s: prog.extensionSec, len: fmtN(prog.productLength), min: prog.minutes })}</p>
+      ${prog.notes.length ? `<h4>${T('Heat notes')}</h4><ul class="notes">` + prog.notes.map(n => `<li>${esc(T(n))}</li>`).join('') + '</ul>' : ''}
+      ${prog.additives.length ? `<h4>${T('Helpers for GC-rich DNA')}</h4><ul class="notes">` + prog.additives.map(n => `<li>${esc(T(n))}</li>`).join('') + '</ul>' : ''}
+      <div class="row wrap"><button class="btn small" id="shareProg">${T('Share program')}</button>
+      <button class="btn small" id="saveProg">${T('Save to notebook')}</button>
+      <button class="btn small" id="gelProg">${T('See on gel')}</button></div></div>`;
     drawProgram(prog);
-    $('shareProg').onclick = () => share('PCR program', 'Dry Lab PCR program\n' + prog.steps.map(s =>
-      `${s.name}: ${s.temp} °C ${time(s.sec, s.hold)}${s.cycles > 1 ? ' x' + s.cycles : ''}`).join('\n') + `\nTa ${prog.ta} °C, about ${prog.minutes} min`);
+    $('shareProg').onclick = () => share('PCR program', programText());
+    $('saveProg').onclick = () => { if (window.DryLabLab) window.DryLabLab.newEntry(); };
+    $('gelProg').onclick = () => { show('gel'); if (window.DryLabGel) window.DryLabGel.run(); };
     mix();
+  }
+
+  function programText() {
+    const prog = S.program; if (!prog) return '';
+    return 'Dry Lab PCR program (' + prog.polymerase + ')\n' + prog.steps.map(s =>
+      `${s.name}: ${s.temp} °C ${s.hold ? 'hold' : fmtTime(s.sec)}${s.cycles > 1 ? ' x' + s.cycles : ''}`).join('\n') + `\nTa ${prog.ta} °C, about ${prog.minutes} min`;
   }
 
   function drawProgram(prog) {
     const cv = $('pcrChart'); if (!cv) return;
     const { g, w, h } = prepCanvas(cv);
-    // one block per step; cycling steps grouped under a bracket
     const steps = prog.steps, padL = 30, padB = 22, top = 16, pw = w - padL - 8, ph = h - padB - top;
-    const tY = (t) => top + ph * (1 - (t - 0) / 105);
+    const tY = (t) => top + ph * (1 - t / 105);
     const seg = pw / (steps.length + 0.5);
     g.strokeStyle = css('--line'); g.fillStyle = css('--muted'); g.lineWidth = 1;
     for (const t of [0, 25, 50, 75, 100]) { g.beginPath(); g.moveTo(padL, tY(t)); g.lineTo(w - 8, tY(t)); g.stroke(); g.fillText(t + '', 4, tY(t) + 4); }
     let x = padL, lastY = tY(25);
     const groups = {};
-    steps.forEach((s, i) => {
+    steps.forEach((s) => {
       const y = tY(s.temp), ramp = seg * 0.18;
       const col = s.temp >= 90 ? css('--hot') : s.temp >= 70 ? css('--warm') : css('--cool');
+      g.fillStyle = col; g.globalAlpha = 0.10; g.fillRect(x + ramp, y, seg - ramp, tY(0) - y); g.globalAlpha = 1;
       g.strokeStyle = css('--muted'); g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, lastY); g.lineTo(x + ramp, y); g.stroke();
       g.strokeStyle = col; g.lineWidth = 4; g.beginPath(); g.moveTo(x + ramp, y); g.lineTo(x + seg, y); g.stroke();
       g.fillStyle = col; g.font = '600 11px system-ui, sans-serif';
@@ -360,48 +395,108 @@
     for (const k in groups) {
       const gr = groups[k], yb = h - padB + 6;
       g.beginPath(); g.moveTo(gr.a + 2, yb - 4); g.lineTo(gr.a + 2, yb); g.lineTo(gr.b - 2, yb); g.lineTo(gr.b - 2, yb - 4); g.stroke();
-      const t = 'x ' + gr.n + ' cycles'; g.fillText(t, (gr.a + gr.b) / 2 - g.measureText(t).width / 2, yb + 13);
+      const t = 'x ' + gr.n + ' ' + T('cycles'); g.fillText(t, (gr.a + gr.b) / 2 - g.measureText(t).width / 2, yb + 13);
     }
     g.fillStyle = css('--muted'); g.font = '11px system-ui, sans-serif'; g.fillText('°C', 4, 10);
+  }
+
+  // PCR animation: one cycle at a time, copies double each cycle
+  const sim = { on: false, t: 0, raf: 0, last: 0 };
+  function simToggle() {
+    sim.on = !sim.on;
+    $('simBtn').textContent = sim.on ? T('Pause') : T('Play');
+    if (sim.on) { if (sim.t >= 1) sim.t = 0; sim.last = performance.now(); sim.raf = requestAnimationFrame(simFrame); }
+    else cancelAnimationFrame(sim.raf);
+  }
+  function simFrame(now) {
+    const dt = (now - sim.last) / 1000; sim.last = now;
+    sim.t = Math.min(1, sim.t + dt / 18);             // whole run in about 18 seconds
+    drawSim();
+    if (sim.t < 1 && sim.on) sim.raf = requestAnimationFrame(simFrame);
+    else { sim.on = false; $('simBtn').textContent = T('Play again'); }
+  }
+  function drawSim() {
+    const cv = $('simChart'); if (!cv || !cv.clientWidth) return;
+    const { g, w, h } = prepCanvas(cv);
+    const prog = S.program || B.pcrProgram({ tmF: 60, tmR: 60, productLength: 500, productGC: 50 });
+    const cycles = prog.steps.filter(s => s.group === 'main')[0].cycles + (prog.steps.some(s => s.group === 'td') ? 10 : 0);
+    const temps = [prog.steps.find(s => s.group === 'main').temp, prog.ta, 72];
+    const done = sim.t * cycles, n = Math.floor(done), phase = done - n;
+    // left: temperature of the current cycle
+    const tw = w * 0.42, pad = 8;
+    const tY = (t) => 18 + (h - 40) * (1 - t / 105);
+    g.strokeStyle = css('--line'); g.lineWidth = 1;
+    for (const t of [25, 50, 75, 100]) { g.beginPath(); g.moveTo(pad, tY(t)); g.lineTo(tw, tY(t)); g.stroke(); }
+    const pts = [[0, 72], [0.08, temps[0]], [0.33, temps[0]], [0.42, temps[1]], [0.66, temps[1]], [0.72, temps[2]], [1, 72]];
+    g.strokeStyle = css('--muted'); g.lineWidth = 2; g.beginPath();
+    pts.forEach(([p, t], i) => { const xx = pad + p * (tw - pad); i ? g.lineTo(xx, tY(t)) : g.moveTo(xx, tY(t)); });
+    g.stroke();
+    let curT = 72;
+    for (let i = 1; i < pts.length; i++) if (phase <= pts[i][0]) { const [p0, t0] = pts[i - 1], [p1, t1] = pts[i]; curT = t0 + (t1 - t0) * (phase - p0) / (p1 - p0); break; }
+    const col = curT >= 90 ? css('--hot') : curT >= 70 ? css('--warm') : css('--cool');
+    g.fillStyle = col; g.beginPath(); g.arc(pad + phase * (tw - pad), tY(curT), 6, 0, 7); g.fill();
+    g.font = '600 13px system-ui, sans-serif'; g.fillText(Math.round(curT) + ' °C', pad, 14);
+    const stage = phase < 0.37 ? T('Separating strands') : phase < 0.69 ? T('Primers sticking') : T('Copying');
+    g.fillStyle = css('--muted'); g.font = '12px system-ui, sans-serif'; g.fillText(stage, pad, h - 6);
+    // right: copies on a log scale
+    const x0 = tw + 24, bw = w - x0 - 10, copiesNow = Math.pow(2, n + (phase > 0.69 ? (phase - 0.69) / 0.31 : 0));
+    g.fillStyle = css('--ink'); g.font = '700 20px system-ui, sans-serif';
+    const big = copiesNow >= 1e9 ? (copiesNow / 1e9).toFixed(2) + ' ' + T('billion') : copiesNow >= 1e6 ? (copiesNow / 1e6).toFixed(1) + ' ' + T('million') : Math.round(copiesNow).toLocaleString('en-IN');
+    g.fillText(big, x0, 30);
+    g.font = '12px system-ui, sans-serif'; g.fillStyle = css('--muted');
+    g.fillText(T('copies after cycle {n} of {c}', { n: Math.min(cycles, n + (phase > 0.69 ? 1 : 0)), c: cycles }), x0, 48);
+    const bars = Math.min(cycles, 40), bh = (h - 70) / bars;
+    for (let i = 0; i < bars; i++) {
+      const filled = i < n || (i === n && phase > 0.69);
+      const len = bw * (i + 1) / bars;
+      g.fillStyle = filled ? css('--accent') : css('--line');
+      g.globalAlpha = filled ? 0.35 + 0.65 * (i + 1) / bars : 1;
+      g.fillRect(x0, 58 + i * bh, len, Math.max(1, bh - 1));
+    }
+    g.globalAlpha = 1;
   }
 
   function mix() {
     const r = B.masterMix({ reactions: +$('mmN').value || 1, volume: +$('mmV').value || 25, extra: +$('mmExtra').value || 0,
       primerStock: +$('mmPS').value || 10, primerFinal: +$('mmPF').value || 0.4, polVolPer50: +$('mmPol').value || 0.25 });
-    $('mmOut').innerHTML = `<table><tr><th>Add</th><th class="num">1 tube (uL)</th><th class="num">Mix for ${r.mixFor} (uL)</th></tr>` +
-      r.rows.map(x => `<tr><td>${esc(x.component)}</td><td class="num">${x.perReaction}</td><td class="num">${x.total === null ? '-' : x.total}</td></tr>`).join('') +
-      '</table>' + (r.ok ? '' : '<p class="warn">Too many components for this volume: use stronger stocks or a bigger volume.</p>');
+    $('mmOut').innerHTML = `<table><tr><th>${T('Add')}</th><th class="num">${T('1 tube (uL)')}</th><th class="num">${T('Mix for {n} (uL)', { n: r.mixFor })}</th></tr>` +
+      r.rows.map(x => `<tr><td>${esc(T(x.component))}</td><td class="num">${x.perReaction}</td><td class="num">${x.total === null ? '-' : x.total}</td></tr>`).join('') +
+      '</table>' + (r.ok ? '' : `<p class="warn">${T('Too many components for this volume: use stronger stocks or a bigger volume.')}</p>`);
   }
 
-  // ------------------------------------------------------------ tools
+  // ------------------------------------------------------------ quick tools (Lab tab)
   function toolInput() {
     const c = B.cleanSequence($('toolIn').value);
-    if (!c.seq) { toast('Paste a DNA sequence in the box'); return null; }
+    if (!c.seq) { toast(T('Paste a DNA sequence in the box')); return null; }
     return c.seq;
   }
   function runTool(t) {
     const out = $('toolOut');
     if (t === 'motif') {
-      if (!S.rec) { toast('Analyze a sequence first'); return; }
+      if (!S.rec) { toast(T('Analyze a sequence first')); return; }
       const m = $('motifIn').value.trim();
       const hits = B.findMotif(S.rec.seq, m);
-      out.textContent = hits.length ? `${hits.length} match(es) of ${B.cleanSequence(m).seq}:\n` + hits.slice(0, 300).map(h => `${h.strand} strand  ${h.start}-${h.end}`).join('\n') : 'Not found in ' + S.rec.name;
+      out.textContent = hits.length ? T('{n} match(es) of {m}:', { n: hits.length, m: B.cleanSequence(m).seq }) + '\n' + hits.slice(0, 300).map(h => `${h.strand} ${T('strand')}  ${h.start}-${h.end}`).join('\n') : T('Not found in {name}', { name: S.rec.name });
       return;
     }
     const s = toolInput(); if (!s) return;
     if (t === 'rc') out.textContent = B.revcomp(s);
     if (t === 'comp') out.textContent = B.complement(s);
     if (t === 'rna') out.textContent = B.transcribe(s);
-    if (t === 'prot') out.textContent = [1, 2, 3].map(f => `Frame ${f}: ${B.translate(s, f)}`).join('\n') + '\n' +
-      [1, 2, 3].map(f => `Frame -${f}: ${B.translate(B.revcomp(s), f)}`).join('\n') + '\n(* = stop codon)';
+    if (t === 'prot') out.textContent = [1, 2, 3].map(f => `${T('Frame')} ${f}: ${B.translate(s, f)}`).join('\n') + '\n' +
+      [1, 2, 3].map(f => `${T('Frame')} -${f}: ${B.translate(B.revcomp(s), f)}`).join('\n') + '\n' + T('(* = stop codon)');
     if (t === 'tm') {
-      if (s.length > 60) { out.textContent = 'Long DNA (' + s.length + ' bp): Tm about ' + B.round(B.tmProduct(s, conditions().na), 1) + ' °C (basic formula).'; return; }
-      out.textContent = `Length ${s.length}, GC ${B.round(B.gcPercent(s), 1)}%\nTm (nearest-neighbour, your salt settings): ${B.round(B.tm(s, conditions()), 1)} °C\nTm (classroom rule 2AT + 4GC): ${B.tmWallace(s)} °C`;
+      if (s.length > 60) { out.textContent = T('Long DNA ({n} bp): Tm about {t} °C (basic formula).', { n: s.length, t: B.round(B.tmProduct(s, conditions().na), 1) }); return; }
+      out.textContent = T('Length {n}, GC {gc}%', { n: s.length, gc: B.round(B.gcPercent(s), 1) }) + '\n' +
+        T('Tm (nearest-neighbour, your salt settings): {t} °C', { t: B.round(B.tm(s, conditions()), 1) }) + '\n' +
+        T('Tm (classroom rule 2AT + 4GC): {t} °C', { t: B.tmWallace(s) });
     }
     if (t === 'check') {
       const c = B.checkPrimer(s, { cond: conditions() }, S.rec ? S.rec.seq : null);
-      out.textContent = `${c.seq}\nTm ${c.tm} °C, GC ${c.gc}%, ${c.clamp} G/C in the last 5 bases\nHairpin stem ${c.hairpin} bp, 3' self-dimer ${c.selfDimer} bp` +
-        (c.sites !== null ? `\nBinding sites in your sequence: ${c.sites}` : '') + '\n' + (c.issues.length ? 'Problems: ' + c.issues.join(', ') : 'No problems found');
+      out.textContent = `${c.seq}\nTm ${c.tm} °C, GC ${c.gc}%, ` + T('{n} G/C in the last 5 bases', { n: c.clamp }) + '\n' +
+        T("Hairpin stem {h} bp, 3' self-dimer {d} bp", { h: c.hairpin, d: c.selfDimer }) +
+        (c.sites !== null ? '\n' + T('Binding sites in your sequence: {n}', { n: c.sites }) : '') + '\n' +
+        (c.issues.length ? T('Problems:') + ' ' + c.issues.map(x => T(x)).join(', ') : T('No problems found'));
     }
   }
   function renderSites() {
@@ -409,8 +504,33 @@
     const list = B.cutSites(S.rec.seq);
     const cutters = list.filter(x => x.positions.length), none = list.filter(x => !x.positions.length);
     $('sitesOut').className = '';
-    $('sitesOut').innerHTML = '<div class="sites">' + cutters.map(x => `<span class="site"><b>${x.name}</b>${x.positions.length === 1 ? 'cuts once at ' + fmtN(x.positions[0]) : x.positions.length + ' sites'}</span>`).join('') + '</div>' +
-      `<p class="muted">Do not cut: ${none.map(x => x.name).join(', ') || 'none'}.</p><p class="learn">For cloning, choose enzymes that do NOT cut inside your gene, then add them to the primers (Primers, Settings).</p>`;
+    $('sitesOut').innerHTML = '<div class="sites">' + cutters.map(x => `<span class="site"><b>${x.name}</b>${x.positions.length === 1 ? T('cuts once at {p}', { p: fmtN(x.positions[0]) }) : T('{n} sites', { n: x.positions.length })}</span>`).join('') + '</div>' +
+      `<p class="muted">${T('Do not cut:')} ${none.map(x => x.name).join(', ') || '-'}.</p><p class="learn">${T('For cloning, choose enzymes that do NOT cut inside your gene, then add them to the primers (Primers, Settings).')}</p>`;
+  }
+
+  function fillMenus() {
+    const keep = { f: $('fSite').value, r: $('rSite').value, p: $('pcrPol').value };
+    const enz = `<option value="">${T('None')}</option>` + Object.keys(B.ENZYMES).map(k => `<option>${k}</option>`).join('');
+    $('fSite').innerHTML = enz; $('rSite').innerHTML = enz;
+    $('pcrPol').innerHTML = Object.entries(B.POLYMERASES).map(([k, p]) => `<option value="${k}">${T(p.name)}</option>`).join('');
+    $('fSite').value = keep.f || ''; $('rSite').value = keep.r || ''; $('pcrPol').value = keep.p || 'taq';
+  }
+
+  // ------------------------------------------------------------ language
+  function setLang(l) {
+    I.setLang(l);
+    store.set('lang', l);
+    $('langBtn').textContent = l === 'ta' ? 'English' : 'தமிழ்';
+    setMode(S.mode);
+    fillMenus();
+    $('simBtn').textContent = T(sim.on ? 'Pause' : 'Play');
+    if (S.rec) { renderSeq(); renderGenes(); fillTargets(); renderSites(); }
+    renderPairs();
+    renderProgram();
+    mix();
+    drawSim();
+    langHooks.forEach(f => f());
+    I.apply(document.body);
   }
 
   // ------------------------------------------------------------ wire up
@@ -423,40 +543,40 @@
       document.body.classList.toggle('learn-on', on); $('learnBtn').classList.toggle('on', on);
       $('learnBtn').setAttribute('aria-pressed', on); store.set('learn', on ? '1' : '0');
     };
+    $('langBtn').onclick = () => setLang(I.lang === 'ta' ? 'en' : 'ta');
     document.querySelectorAll('#nav button').forEach(b => b.onclick = () => show(b.dataset.tab));
     document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => show(b.dataset.go));
     $('analyzeBtn').onclick = () => analyze($('seqInput').value);
-    $('demoBtn').onclick = () => { $('seqInput').value = window.DEMO_SEQUENCE; analyze(window.DEMO_SEQUENCE); toast('Demo loaded'); };
+    $('demoBtn').onclick = () => { $('seqInput').value = window.DEMO_SEQUENCE; analyze(window.DEMO_SEQUENCE); toast(T('Demo loaded')); };
     $('clearBtn').onclick = () => { $('seqInput').value = ''; $('seqInput').focus(); };
     $('recordSelect').onchange = (e) => pick(+e.target.value);
     $('fileInput').onchange = (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
-      if (f.size > 30e6) { toast('File is too big (over 30 MB)'); return; }
+      if (f.size > 30e6) { toast(T('File is too big (over 30 MB)')); return; }
       const rd = new FileReader();
-      rd.onload = () => { const txt = String(rd.result); $('seqInput').value = txt.length > 200000 ? txt.slice(0, 200000) + '\n...' : txt; analyze(txt); toast('Opened ' + f.name); };
-      rd.onerror = () => toast('Could not read that file');
+      rd.onload = () => { const txt = String(rd.result); $('seqInput').value = txt.length > 200000 ? txt.slice(0, 200000) + '\n...' : txt; analyze(txt); toast(T('Opened {f}', { f: f.name })); };
+      rd.onerror = () => toast(T('Could not read that file'));
       rd.readAsText(f); e.target.value = '';
     };
     $('orfBtn').onclick = () => runOrfs(false);
     $('orfList').onclick = (e) => { const c = e.target.closest('.orf'); if (c && !e.target.closest('.more')) expandOrf(c); };
     $('targetSelect').onchange = onTarget;
     document.querySelectorAll('#modeSeg button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
-    const enz = '<option value="">None</option>' + Object.keys(B.ENZYMES).map(k => `<option>${k}</option>`).join('');
-    $('fSite').innerHTML = enz; $('rSite').innerHTML = enz;
     $('designBtn').onclick = design;
-    $('pcrPol').innerHTML = Object.entries(B.POLYMERASES).map(([k, p]) => `<option value="${k}">${p.name}</option>`).join('');
+    fillMenus();
     $('pcrBtn').onclick = makeProgram;
+    $('simBtn').onclick = simToggle;
     ['mmN', 'mmV', 'mmExtra', 'mmPS', 'mmPF', 'mmPol'].forEach(id => $(id).addEventListener('input', mix));
     document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => runTool(b.dataset.tool));
     $('dimBtn').onclick = () => {
       const a = B.cleanSequence($('dimA').value).seq, b = B.cleanSequence($('dimB').value).seq;
-      if (!a || !b) { toast('Paste both primers'); return; }
+      if (!a || !b) { toast(T('Paste both primers')); return; }
       const d = B.dimer(a, b), ta = B.tm(a, conditions()), tb = B.tm(b, conditions());
-      $('dimOut').textContent = `Longest stretch that pairs: ${d.any} bases\nPairing at a 3' end: ${d.end3} bases\n` +
-        (d.end3 >= 4 ? "Warning: 3' ends pair, so a primer-dimer band (~40-60 bp) is likely." : d.any >= 7 ? 'Some pairing in the middle: usually OK.' : 'Looks fine: no strong pairing.') +
-        `\nTm: ${B.round(ta, 1)} °C and ${B.round(tb, 1)} °C (gap ${B.round(Math.abs(ta - tb), 1)} °C)`;
+      $('dimOut').textContent = T('Longest stretch that pairs: {n} bases', { n: d.any }) + '\n' + T("Pairing at a 3' end: {n} bases", { n: d.end3 }) + '\n' +
+        (d.end3 >= 4 ? T("Warning: 3' ends pair, so a primer-dimer band (~40-60 bp) is likely.") : d.any >= 7 ? T('Some pairing in the middle: usually OK.') : T('Looks fine: no strong pairing.')) +
+        '\n' + T('Tm: {a} °C and {b} °C (gap {g} °C)', { a: B.round(ta, 1), b: B.round(tb, 1), g: B.round(Math.abs(ta - tb), 1) });
     };
-    window.addEventListener('resize', () => { if (S.rec) { drawGC(); drawOrfMap(); } if (S.program) drawProgram(S.program); });
+    window.addEventListener('resize', () => { if (S.rec) { drawGC(); drawOrfMap(); } if (S.program) drawProgram(S.program); drawSim(); });
     // Android back button: return to the first tab before closing the app
     window.dryLabBack = () => {
       const cur = document.querySelector('.tab.active');
@@ -465,10 +585,18 @@
     };
     setMode('exact');
     mix();
+    const lang = store.get('lang', 'en');
+    if (lang === 'ta') { I.setLang('ta'); $('langBtn').textContent = 'English'; setMode('exact'); }
     const saved = store.get('input', '');
-    if (saved) { $('seqInput').value = saved.length > 200000 ? saved.slice(0, 200000) : saved; analyze(saved); }
+    if (saved) { $('seqInput').value = saved.length > 200000 ? saved.slice(0, 200000) : saved; analyze(saved, true); }
+    if (lang === 'ta') I.apply(document.body);
+    drawSim();
     const tab = store.get('tab', 'seq');
-    if (tab !== 'seq' && $('tab-' + tab)) show(tab);
+    setTimeout(() => { if (tab !== 'seq' && $('tab-' + tab)) show(tab); }, 0);
   }
-  init();
+
+  // shared with gel.js and lab.js
+  window.DryLab = { S, $, B, T, I, esc, fmtN, store, css, toast, copy, share, show, prepCanvas, conditions, programText,
+    onShow: (tab, f) => { showHooks[tab] = f; }, onLang: (f) => langHooks.push(f) };
+  document.addEventListener('DOMContentLoaded', init);
 })();

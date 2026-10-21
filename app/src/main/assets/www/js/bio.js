@@ -587,11 +587,218 @@
     return hits.sort((x, y) => x.start - y.start);
   }
 
+
+  // ---------------------------------------------------------------- digests and gels
+  // Where each enzyme cuts the top strand, counted from the start of its site (EcoRI G^AATTC = 1).
+  const CUT = { EcoRI: 1, BamHI: 1, HindIII: 1, NotI: 2, XhoI: 1, PstI: 5, SmaI: 3, EcoRV: 3, KpnI: 5, SacI: 5,
+    XbaI: 1, NcoI: 1, NdeI: 2, SalI: 1, SpeI: 1, BglII: 1, NheI: 1, SphI: 5 };
+
+  /** Cut a sequence with one or more enzymes. circular = plasmid. Returns fragments in order. */
+  function digest(seq, enzymes, circular) {
+    const L = seq.length, cuts = new Set();
+    for (const e of enzymes) {
+      const site = ENZYMES[e]; if (!site) continue;
+      let i = seq.indexOf(site);
+      while (i >= 0) { cuts.add(i + CUT[e]); i = seq.indexOf(site, i + 1); }
+      if (circular) {                                   // sites across the join of a circle
+        const wrap = seq.slice(-site.length + 1) + seq.slice(0, site.length - 1);
+        let j = wrap.indexOf(site);
+        while (j >= 0) { cuts.add(((j + CUT[e] - (site.length - 1)) % L + L) % L); j = wrap.indexOf(site, j + 1); }
+      }
+    }
+    const pos = [...cuts].filter(c => c > 0 && c < L || (circular && c === 0)).sort((a, b) => a - b);
+    const frags = [];
+    if (!pos.length) return { cuts: [], fragments: [{ start: 1, end: L, size: L }], circularUncut: !!circular };
+    if (circular) {
+      for (let k = 0; k < pos.length; k++) {
+        const a = pos[k], b = k + 1 < pos.length ? pos[k + 1] : pos[0] + L;
+        frags.push({ start: a + 1, end: ((b - 1) % L) + 1, size: b - a });
+      }
+    } else {
+      let prev = 0;
+      for (const c of pos) { frags.push({ start: prev + 1, end: c, size: c - prev }); prev = c; }
+      frags.push({ start: prev + 1, end: L, size: L - prev });
+    }
+    return { cuts: pos.map(c => c + 1), fragments: frags, circularUncut: false };
+  }
+
+  // Typical ladder band sizes (check the sheet that came with your ladder; brands differ slightly).
+  const LADDERS = {
+    '100bp': { name: '100 bp ladder', sizes: [1517, 1200, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100], bright: [1000, 500] },   // 500/517 run as one band
+    '1kb': { name: '1 kb ladder', sizes: [10000, 8000, 6000, 5000, 4000, 3500, 3000, 2500, 2000, 1500, 1000, 750, 500, 250], bright: [6000, 3000, 1000] },
+    '50bp': { name: '50 bp ladder', sizes: [1350, 916, 766, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200, 150, 100, 50], bright: [500, 150] },
+  };
+
+  // Range of sizes each agarose percentage separates well (bp).
+  const AGAROSE = { 0.7: [800, 12000], 1: [400, 8000], 1.5: [200, 3000], 2: [100, 2000], 3: [50, 1000] };
+
+  /** Where a band sits in the lane: 0 = wells (top), 1 = bottom. Bands outside the good range bunch up. */
+  function migration(bp, agarose) {
+    const r = AGAROSE[agarose] || AGAROSE[1];
+    const t = (Math.log10(r[1]) - Math.log10(bp)) / (Math.log10(r[1]) - Math.log10(r[0]));
+    return 0.04 + 0.92 / (1 + Math.exp(-4.2 * (t - 0.5)));
+  }
+
+  /** Best agarose % for a set of fragment sizes. */
+  function bestAgarose(sizes) {
+    const lo = Math.min(...sizes), hi = Math.max(...sizes);
+    let best = 1, score = -1;
+    for (const [p, r] of Object.entries(AGAROSE)) {
+      const s = Math.min(hi, r[1]) / Math.max(lo, r[0]);           // how much of the span is well separated
+      const inside = sizes.filter(x => x >= r[0] && x <= r[1]).length / sizes.length;
+      const sc = inside * 10 + Math.log10(s);
+      if (sc > score) { score = sc; best = +p; }
+    }
+    return best;
+  }
+
+  /**
+   * Size of an unknown band from a gel photo, using ladder bands as a ruler.
+   * ladder: [{ y, bp }] with y = distance from the wells. Interpolates log(size) between the two nearest ladder bands.
+   */
+  function sizeFromPosition(ladder, y) {
+    const pts = ladder.slice().sort((a, b) => a.y - b.y);
+    if (pts.length < 2) return NaN;
+    let i = 0;
+    while (i < pts.length - 2 && y > pts[i + 1].y) i++;
+    const a = pts[i], b = pts[i + 1];
+    const la = Math.log10(a.bp), lb = Math.log10(b.bp);
+    const f = (y - a.y) / (b.y - a.y || 1);
+    return Math.pow(10, la + f * (lb - la));
+  }
+
+
+  /**
+   * Matches bands found in a ladder lane to the ladder's sizes. Photos often have extra marks (wells, labels)
+   * or miss the biggest bands, so every alignment is tried. The winner follows a smooth curve (log size vs
+   * distance) and puts the ladder's brighter reference bands on the brighter peaks.
+   * peaks: [{y, strength}] top to bottom. bright: sizes of the reference bands. forceTop: ladder index of the first band.
+   */
+  function fitLadder(peaks, sizes, bright, forceTop) {
+    peaks = peaks.map(p => typeof p === 'number' ? { y: p, strength: 1 } : p);
+    const brightSet = new Set(bright || []);
+    let best = null;
+    const P = peaks.length, Sz = sizes.length;
+    for (let k = 0; k <= Math.min(8, P - 3); k++) {
+      const js = forceTop === undefined || forceTop === null ? [...Array(Math.max(1, Math.min(6, Sz - 2))).keys()] : [forceTop];
+      for (const j of js) {
+        const m = Math.min(P - k, Sz - j);
+        if (m < 3) continue;
+        const pk = peaks.slice(k, k + m), sz = sizes.slice(j, j + m);
+        const err = curveError(pk.map(p => p.y), sz.map(Math.log10));
+        const b = pk.filter((p, i) => brightSet.has(sz[i])), o = pk.filter((p, i) => !brightSet.has(sz[i]));
+        const glow = b.length && o.length ? b.reduce((a, p) => a + p.strength, 0) / b.length - o.reduce((a, p) => a + p.strength, 0) / o.length : 0;
+        const missing = j + Math.max(0, (Sz - j) - m);                       // ladder bands not seen
+        const unmatched = peaks.reduce((a, p, i) => a + (i < k || i >= k + m ? p.strength : 0), 0);   // real-looking bands left over
+        const score = err + 0.002 * missing + 0.03 * unmatched - 0.03 * glow + (m < 6 ? 0.03 : 0);
+        if (!best || score < best.score) best = { score, k, j, pairs: pk.map((p, i) => ({ y: p.y, bp: sz[i] })) };
+      }
+    }
+    return best;
+  }
+  function curveError(x, y) {                       // residual error of a cubic: log(size) = a + b x + c x^2 + d x^3
+    const n = x.length, p = Math.min(4, n - 1); if (n < 5) return 0.03;
+    const mx = x.reduce((a, b) => a + b, 0) / n, sx = Math.sqrt(x.reduce((a, b) => a + (b - mx) ** 2, 0) / n) || 1;
+    const u = x.map(v => (v - mx) / sx);
+    const A = [...Array(p)].map(() => Array(p).fill(0)), R = Array(p).fill(0);
+    for (let i = 0; i < n; i++) { const f = [...Array(p)].map((_, a) => u[i] ** a); for (let a = 0; a < p; a++) { R[a] += f[a] * y[i]; for (let b = 0; b < p; b++) A[a][b] += f[a] * f[b]; } }
+    const c = solve(A, R); if (!c) return 1;
+    let sse = 0, mono = true;
+    for (let i = 0; i < n; i++) {
+      let v = 0, dv = 0;
+      for (let a = 0; a < p; a++) { v += c[a] * u[i] ** a; if (a) dv += a * c[a] * u[i] ** (a - 1); }
+      sse += (y[i] - v) ** 2; if (dv >= 0) mono = false;     // sizes must shrink going down the gel
+    }
+    return Math.sqrt(sse / (n - p)) + (mono ? 0 : 0.2);
+  }
+  function solve(A, b) {
+    const n = b.length, M = A.map((r, i) => [...r, b[i]]);
+    for (let i = 0; i < n; i++) {
+      let q = i; for (let r = i + 1; r < n; r++) if (Math.abs(M[r][i]) > Math.abs(M[q][i])) q = r;
+      if (Math.abs(M[q][i]) < 1e-12) return null;
+      [M[i], M[q]] = [M[q], M[i]];
+      for (let r = 0; r < n; r++) if (r !== i) { const f = M[r][i] / M[i][i]; for (let c = i; c <= n; c++) M[r][c] -= f * M[i][c]; }
+    }
+    return M.map((r, i) => r[n] / r[i]);
+  }
+
+  /** Finds bright bands along a lane profile (array of brightness values, top to bottom). */
+  function findBands(profile, opt) {
+    opt = Object.assign({ smooth: Math.max(1, Math.round(profile.length / 160)), minGap: Math.max(3, Math.round(profile.length / 70)), minHeight: 0.12 }, opt || {});
+    const n = profile.length, sm = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      let s = 0, c = 0;
+      for (let k = -opt.smooth; k <= opt.smooth; k++) { const j = i + k; if (j >= 0 && j < n) { s += profile[j]; c++; } }
+      sm[i] = s / c;
+    }
+    const w = Math.max(5, Math.round(n / 12)), base = new Array(n);       // rolling minimum = background glow
+    for (let i = 0; i < n; i++) { let m = Infinity; for (let k = Math.max(0, i - w); k <= Math.min(n - 1, i + w); k++) m = Math.min(m, sm[k]); base[i] = m; }
+    const sig = sm.map((v, i) => v - base[i]);
+    const top = Math.max(...sig);
+    if (top <= 0) return [];
+    const peaks = [];
+    for (let i = 1; i < n - 1; i++) {
+      if (sig[i] >= sig[i - 1] && sig[i] > sig[i + 1] && sig[i] >= top * opt.minHeight) peaks.push({ y: i, strength: sig[i] / top });
+    }
+    peaks.sort((a, b) => b.strength - a.strength);                        // keep the strongest when two are too close
+    const kept = [];
+    for (const p of peaks) if (kept.every(k => Math.abs(k.y - p.y) >= opt.minGap)) kept.push(p);
+    return kept.sort((a, b) => a.y - b.y);
+  }
+
+  // ---------------------------------------------------------------- lab calculators
+  /** C1 x V1 = C2 x V2: leave exactly one value as null and it is calculated. */
+  function dilution(c1, v1, c2, v2) {
+    const vals = { c1, v1, c2, v2 }, missing = Object.keys(vals).filter(k => vals[k] === null || vals[k] === '' || isNaN(vals[k]));
+    if (missing.length !== 1) return null;
+    const m = missing[0];
+    if (m === 'c1') vals.c1 = c2 * v2 / v1;
+    if (m === 'v1') vals.v1 = c2 * v2 / c1;
+    if (m === 'c2') vals.c2 = c1 * v1 / v2;
+    if (m === 'v2') vals.v2 = c1 * v1 / c2;
+    vals.missing = m;
+    if (vals.v2 !== undefined && vals.v1 !== undefined) vals.diluent = vals.v2 - vals.v1;
+    return vals;
+  }
+  /** grams of a chemical needed for a solution: molarity (M) x volume (mL) x molar mass (g/mol). */
+  function gramsFor(molar, volumeMl, mw) { return molar * volumeMl / 1000 * mw; }
+  /** Concentration from absorbance at 260 nm. type: 'ds' DNA (50), 'ss' DNA (33), 'rna' (40). */
+  function nucleicConc(a260, a280, a230, dilutionFactor, type) {
+    const k = { ds: 50, ss: 33, rna: 40 }[type || 'ds'];
+    const conc = a260 * k * (dilutionFactor || 1);
+    const r280 = a280 ? a260 / a280 : null, r230 = a230 ? a260 / a230 : null;
+    const target = type === 'rna' ? 2.0 : 1.8;
+    const notes = [];
+    if (r280 !== null) {
+      if (r280 < target - 0.15) notes.push('protein');
+      else if (r280 > target + 0.25) notes.push('rnaInDna');
+      else notes.push('pure280');
+    }
+    if (r230 !== null && r230 < 1.8) notes.push('salt');
+    return { ngPerUl: round(conc, 1), r280: r280 === null ? null : round(r280, 2), r230: r230 === null ? null : round(r230, 2), target, notes };
+  }
+  /** Number of DNA copies in a mass of double-stranded DNA (650 g/mol per base pair). */
+  function copies(ng, bp) { return ng * 6.022e23 / (bp * 650 * 1e9); }
+  /** Agarose powder for a gel: grams = percent / 100 x volume (mL). */
+  function agaroseGrams(percent, volumeMl) { return percent / 100 * volumeMl; }
+  /** Stock buffer recipes, scaled to the volume you want (mL). */
+  function bufferRecipe(name, volumeMl) {
+    const f = volumeMl / 1000;
+    const R = {
+      'TAE 50x': [['Tris base', 242 * f, 'g'], ['Glacial acetic acid', 57.1 * f, 'mL'], ['0.5 M EDTA (pH 8.0)', 100 * f, 'mL']],
+      'TBE 10x': [['Tris base', 108 * f, 'g'], ['Boric acid', 55 * f, 'g'], ['0.5 M EDTA (pH 8.0)', 40 * f, 'mL']],
+    }[name];
+    if (!R) return null;
+    return { items: R.map(([what, amt, unit]) => ({ what, amount: round(amt, amt < 10 ? 2 : 1), unit })), makeUpTo: volumeMl, dilute: name === 'TAE 50x' ? 50 : 10 };
+  }
+
   function round(x, d) { const f = Math.pow(10, d || 0); return Math.round(x * f) / f; }
 
   const Bio = { CODON, ENZYMES, POLYMERASES, complement, revcomp, transcribe, translate, cleanSequence,
     parseInput, stats, gcPercent, gcWindow, findOrfs, proteinWeight, tm, tmWallace, tmProduct, dimer,
-    hairpin, checkPrimer, defaultDesign, designPrimers, pcrProgram, masterMix, cutSites, findMotif, round };
+    hairpin, checkPrimer, defaultDesign, designPrimers, pcrProgram, masterMix, cutSites, findMotif, round,
+    CUT, LADDERS, AGAROSE, digest, migration, bestAgarose, sizeFromPosition, findBands, fitLadder, dilution, gramsFor,
+    nucleicConc, copies, agaroseGrams, bufferRecipe };
   root.Bio = Bio;
   if (typeof module !== 'undefined' && module.exports) module.exports = Bio;
 })(typeof window !== 'undefined' ? window : globalThis);

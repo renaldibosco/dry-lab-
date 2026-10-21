@@ -4,12 +4,14 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -31,6 +33,7 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private ValueCallback<Uri[]> fileCallback;
+    private Uri cameraUri;   // where the camera saves a new gel photo
 
     @Override
     protected void onCreate(Bundle state) {
@@ -79,11 +82,35 @@ public class MainActivity extends Activity {
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
                 fileCallback = callback;
+                boolean image = false;
+                String[] types = params.getAcceptTypes();
+                if (types != null) for (String t : types) if (t != null && t.startsWith("image")) image = true;
+
                 Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
                 pick.addCategory(Intent.CATEGORY_OPENABLE);
-                pick.setType("*/*");   // .fasta and .gb files have no standard type, so allow all
+                pick.setType(image ? "image/*" : "*/*");   // .fasta and .gb files have no standard type
+                Intent chooser = Intent.createChooser(pick, getString(image ? R.string.open_photo : R.string.open_file));
+
+                // For gel photos also offer the camera (Android 10+: the photo goes to Pictures/Dry Lab, no permission needed)
+                cameraUri = null;
+                if (image && Build.VERSION.SDK_INT >= 29) {
+                    try {
+                        ContentValues v = new ContentValues();
+                        v.put(MediaStore.Images.Media.DISPLAY_NAME, "drylab_gel_" + System.currentTimeMillis() + ".jpg");
+                        v.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                        v.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Dry Lab");
+                        cameraUri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                        if (cameraUri != null) {
+                            Intent cam = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                            cam.putExtra(MediaStore.EXTRA_OUTPUT, cameraUri);
+                            cam.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            if (cam.resolveActivity(getPackageManager()) != null) chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{cam});
+                            else { getContentResolver().delete(cameraUri, null, null); cameraUri = null; }
+                        }
+                    } catch (Exception e) { cameraUri = null; }
+                }
                 try {
-                    startActivityForResult(Intent.createChooser(pick, getString(R.string.open_file)), PICK_FILE);
+                    startActivityForResult(chooser, PICK_FILE);
                 } catch (ActivityNotFoundException e) {
                     fileCallback = null;
                     Toast.makeText(MainActivity.this, "No file manager found", Toast.LENGTH_SHORT).show();
@@ -101,7 +128,14 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == PICK_FILE && fileCallback != null) {
             Uri[] result = null;
-            if (resultCode == RESULT_OK && data != null && data.getData() != null) result = new Uri[]{data.getData()};
+            if (resultCode == RESULT_OK) {
+                if (data != null && data.getData() != null) result = new Uri[]{data.getData()};
+                else if (cameraUri != null) result = new Uri[]{cameraUri};          // photo just taken
+            }
+            if (result == null || (cameraUri != null && !cameraUri.equals(result[0]))) {
+                if (cameraUri != null) try { getContentResolver().delete(cameraUri, null, null); } catch (Exception ignored) { }
+            }
+            cameraUri = null;
             fileCallback.onReceiveValue(result);
             fileCallback = null;
             return;
