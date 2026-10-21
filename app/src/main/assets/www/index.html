@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Dry Lab</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><path d="M11 3h10M13 3v8L5 26a2.5 2.5 0 0 0 2.2 3.7h17.6A2.5 2.5 0 0 0 27 26L19 11V3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 21c3-2 5 2 8 0s4.5-1 5.5 0" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <div><h1>Dry Lab</h1><p>Plan your PCR before the wet lab</p></div>
+  </div>
+  <button id="learnBtn" class="chip on" aria-pressed="true" title="Show explanations">Learn mode</button>
+</header>
+
+<main>
+<!-- ============================== SEQUENCE ============================== -->
+<section id="tab-seq" class="tab active">
+  <div class="card">
+    <h2>1. Your DNA sequence</h2>
+    <p class="learn">Paste DNA, or open a FASTA (.fasta, .fa), GenBank (.gb) or text file. Numbers and spaces are removed for you. RNA (U) is changed to DNA (T).</p>
+    <textarea id="seqInput" rows="7" spellcheck="false" autocapitalize="characters" placeholder=">my gene&#10;ATGGCTAGCAAGGAGGAA..."></textarea>
+    <div class="row wrap">
+      <button class="btn primary" id="analyzeBtn">Analyze</button>
+      <label class="btn"><input type="file" id="fileInput" accept=".fa,.fasta,.fna,.ffn,.gb,.gbk,.genbank,.txt,.seq,text/*" hidden>Open file</label>
+      <button class="btn" id="demoBtn">Try demo</button>
+      <button class="btn ghost" id="clearBtn">Clear</button>
+    </div>
+    <select id="recordSelect" class="hidden"></select>
+  </div>
+
+  <div id="seqResult" class="hidden">
+    <div class="card">
+      <div class="title-row"><h2 id="seqName">Sequence</h2><span class="tag" id="seqFormat"></span></div>
+      <div id="warnings"></div>
+      <div class="stats">
+        <div class="stat"><b id="sLen">0</b><span>bases (bp)</span></div>
+        <div class="stat gc"><b id="sGC">0%</b><span>GC</span></div>
+        <div class="stat at"><b id="sAT">0%</b><span>AT</span></div>
+      </div>
+      <div class="gcbar" aria-hidden="true"><div id="gcFill"></div></div>
+      <div class="legend"><span class="dot gc"></span>G + C (3 bonds, holds tighter) <span class="dot at"></span>A + T (2 bonds)</div>
+      <div class="counts" id="sCounts"></div>
+      <p class="muted" id="sMw"></p>
+      <p class="learn">GC content matters for heat: G-C pairs have 3 hydrogen bonds, A-T pairs have 2. More GC means the DNA needs more heat to separate (a higher melting temperature).</p>
+    </div>
+    <div class="card">
+      <h3>GC along the sequence</h3>
+      <canvas id="gcChart" height="150"></canvas>
+      <p class="learn">Peaks above the red line (65%) are GC-rich spots. They are harder to copy by PCR and may need 98 °C, DMSO or betaine.</p>
+    </div>
+    <button class="btn primary wide" data-go="genes">Find genes (start and stop codons) &rarr;</button>
+  </div>
+</section>
+
+<!-- ============================== GENES ============================== -->
+<section id="tab-genes" class="tab">
+  <div class="card">
+    <h2>2. Genes: start and stop codons</h2>
+    <p class="learn">An open reading frame (ORF) starts at a start codon (ATG) and runs in steps of 3 bases until a stop codon (TAA, TAG or TGA). Genes can be on either strand, so both are searched.</p>
+    <div class="grid2">
+      <label>Shortest gene (amino acids)<input type="number" id="minAA" value="100" min="10" max="2000"></label>
+      <label class="check"><input type="checkbox" id="altStarts"> Also GTG and TTG starts (bacteria)</label>
+      <label class="check"><input type="checkbox" id="bothStrands" checked> Search both strands</label>
+      <label class="check"><input type="checkbox" id="partial" checked> Show genes without a stop (cut off at the end)</label>
+    </div>
+    <button class="btn primary" id="orfBtn">Find genes</button>
+  </div>
+  <div id="genesEmpty" class="card muted">Analyze a sequence first.</div>
+  <div id="orfMapCard" class="card hidden">
+    <h3 id="orfCount"></h3>
+    <canvas id="orfMap" height="90"></canvas>
+    <p class="learn">Arrows on top read left to right (+ strand). Arrows below read right to left (- strand).</p>
+  </div>
+  <div id="annotated" class="hidden"></div>
+  <div id="orfList"></div>
+</section>
+
+<!-- ============================== PRIMERS ============================== -->
+<section id="tab-primers" class="tab">
+  <div class="card">
+    <h2>3. PCR primers</h2>
+    <p class="learn">Primers are short DNA pieces (18-25 bases) that mark where copying starts. Good primers have Tm 55-65 °C, GC 40-60%, one or two G/C at the 3' end, and do not stick to themselves.</p>
+    <label>What to copy
+      <select id="targetSelect"></select>
+    </label>
+    <div id="customRegion" class="grid2 hidden">
+      <label>From base<input type="number" id="regFrom" min="1" value="1"></label>
+      <label>To base<input type="number" id="regTo" min="1" value="500"></label>
+    </div>
+    <div class="seg" id="modeSeg" role="radiogroup">
+      <button data-mode="exact" class="on">Whole gene, exact ends</button>
+      <button data-mode="flank">Around it</button>
+      <button data-mode="anywhere">Best anywhere</button>
+    </div>
+    <p class="learn" id="modeHelp"></p>
+    <details>
+      <summary>Settings (primer rules and reaction salts)</summary>
+      <div class="grid3">
+        <label>Length min<input type="number" id="pLenMin" value="18"></label>
+        <label>Length max<input type="number" id="pLenMax" value="25"></label>
+        <label>Max Tm gap (°C)<input type="number" id="pTmDiff" value="3" step="0.5"></label>
+        <label>Tm min<input type="number" id="pTmMin" value="55"></label>
+        <label>Tm best<input type="number" id="pTmOpt" value="60"></label>
+        <label>Tm max<input type="number" id="pTmMax" value="65"></label>
+        <label>GC min %<input type="number" id="pGcMin" value="40"></label>
+        <label>GC max %<input type="number" id="pGcMax" value="60"></label>
+        <label>Pairs to show<input type="number" id="pResults" value="5" min="1" max="20"></label>
+        <label>Product min (bp)<input type="number" id="pSizeMin" value="100"></label>
+        <label>Product max (bp)<input type="number" id="pSizeMax" value="1000"></label>
+        <span></span>
+        <label>Na+ (mM)<input type="number" id="cNa" value="50"></label>
+        <label>Mg2+ (mM)<input type="number" id="cMg" value="1.5" step="0.1"></label>
+        <label>dNTP (mM)<input type="number" id="cDntp" value="0.2" step="0.1"></label>
+        <label>Primer (nM)<input type="number" id="cPrimer" value="250"></label>
+      </div>
+      <h4>Cloning add-on: restriction sites on the primer ends</h4>
+      <div class="grid2">
+        <label>Forward primer site<select id="fSite"></select></label>
+        <label>Reverse primer site<select id="rSite"></select></label>
+      </div>
+      <p class="learn">Adds an enzyme site plus 4 extra bases (GCGC) to the 5' end, so the PCR product can be cut and pasted into a plasmid. The extra bases do not change the binding Tm shown.</p>
+    </details>
+    <button class="btn primary" id="designBtn">Design primers</button>
+  </div>
+  <div id="primerOut"></div>
+</section>
+
+<!-- ============================== PCR ============================== -->
+<section id="tab-pcr" class="tab">
+  <div class="card">
+    <h2>4. PCR program: temperatures and times</h2>
+    <p class="learn">Each cycle has three temperatures: very hot to separate the DNA strands (denaturation), cooler so primers can stick (annealing), then 72 °C where the polymerase copies (extension). Annealing temperature (Ta) comes from the primers' Tm.</p>
+    <div class="grid2">
+      <label>Forward primer Tm (°C)<input type="number" id="pcrTmF" value="60" step="0.1"></label>
+      <label>Reverse primer Tm (°C)<input type="number" id="pcrTmR" value="60" step="0.1"></label>
+      <label>Product length (bp)<input type="number" id="pcrLen" value="500"></label>
+      <label>Product GC (%)<input type="number" id="pcrGC" value="50"></label>
+      <label>Polymerase<select id="pcrPol"></select></label>
+      <label>Cycles<input type="number" id="pcrCycles" value="30" min="15" max="45"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="pcrTouch"> Touchdown PCR (cleaner result when you see extra bands)</label>
+    <button class="btn primary" id="pcrBtn">Make program</button>
+  </div>
+  <div id="pcrOut"></div>
+
+  <div class="card">
+    <h3>Master mix calculator</h3>
+    <div class="grid3">
+      <label>Reactions<input type="number" id="mmN" value="8" min="1"></label>
+      <label>Volume (uL)<select id="mmV"><option>25</option><option>50</option><option>20</option><option>10</option></select></label>
+      <label>Extra %<input type="number" id="mmExtra" value="10" min="0"></label>
+      <label>Primer stock (uM)<input type="number" id="mmPS" value="10"></label>
+      <label>Primer final (uM)<input type="number" id="mmPF" value="0.4" step="0.05"></label>
+      <label>Polymerase uL / 50 uL<input type="number" id="mmPol" value="0.25" step="0.05"></label>
+    </div>
+    <div id="mmOut"></div>
+    <p class="learn">Make one mix for all tubes plus a little extra (pipetting loses some), then add template DNA to each tube. Always include a no-template control (water instead of DNA).</p>
+  </div>
+</section>
+
+<!-- ============================== TOOLS ============================== -->
+<section id="tab-tools" class="tab">
+  <div class="card">
+    <h2>Quick tools</h2>
+    <textarea id="toolIn" rows="4" spellcheck="false" placeholder="Paste a short DNA sequence or a primer"></textarea>
+    <div class="row wrap">
+      <button class="btn" data-tool="rc">Reverse complement</button>
+      <button class="btn" data-tool="comp">Complement</button>
+      <button class="btn" data-tool="rna">DNA &rarr; RNA</button>
+      <button class="btn" data-tool="prot">Translate</button>
+      <button class="btn" data-tool="tm">Primer Tm</button>
+      <button class="btn" data-tool="check">Check primer</button>
+    </div>
+    <div class="row wrap">
+      <input id="motifIn" placeholder="Motif, e.g. GAATTC or TATAAT" spellcheck="false">
+      <button class="btn" data-tool="motif">Find in my sequence</button>
+    </div>
+    <pre id="toolOut" class="out"></pre>
+  </div>
+  <div class="card">
+    <h3>Restriction enzyme sites in your sequence</h3>
+    <div id="sitesOut" class="muted">Analyze a sequence first.</div>
+  </div>
+  <div class="card">
+    <h3>Do two primers stick together?</h3>
+    <input id="dimA" placeholder="Forward primer 5'-3'" spellcheck="false">
+    <input id="dimB" placeholder="Reverse primer 5'-3'" spellcheck="false">
+    <button class="btn" id="dimBtn">Check pair</button>
+    <pre id="dimOut" class="out"></pre>
+  </div>
+  <p class="about muted">Dry Lab 1.0. Works offline. Calculations: nearest-neighbour Tm (SantaLucia 1998), checked against Biopython. Planning tool only: always confirm in the lab.</p>
+</section>
+</main>
+
+<nav class="bottom" id="nav">
+  <button data-tab="seq" class="on"><svg viewBox="0 0 24 24"><path d="M7 3c0 6 10 6 10 12s-10 6-10 6M17 3c0 6-10 6-10 12M8 7h8M8 17h8"/></svg>Sequence</button>
+  <button data-tab="genes"><svg viewBox="0 0 24 24"><path d="M3 12h14M13 7l5 5-5 5M3 6h4M3 18h4"/></svg>Genes</button>
+  <button data-tab="primers"><svg viewBox="0 0 24 24"><path d="M4 8h8M12 8l-3-3M20 16h-8M12 16l3 3M4 12h16"/></svg>Primers</button>
+  <button data-tab="pcr"><svg viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v9a4 4 0 1 1-4 0z M12 9v6"/></svg>PCR</button>
+  <button data-tab="tools"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 6-6-1.3-1.3a4 4 0 0 1-5-5L12 2l2 2z M3 21l4-4"/></svg>Tools</button>
+</nav>
+<div id="toast" role="status"></div>
+
+<script src="js/demo.js"></script>
+<script src="js/bio.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

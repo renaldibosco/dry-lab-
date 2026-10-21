@@ -1,0 +1,50 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test the biology engine
+        run: node tests/test_bio.js
+
+      - name: Cross-check with Biopython
+        run: |
+          pip install --quiet biopython
+          python tests/check_with_biopython.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the app
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Name the APK
+        run: cp app/build/outputs/apk/release/app-release.apk DryLab-1.0.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DryLab-apk
+          path: DryLab-*.apk
+
+      - name: Publish a release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v1.0.${{ github.run_number }}" "DryLab-1.0.${{ github.run_number }}.apk" \
+            --title "Dry Lab 1.0.${{ github.run_number }}" \
+            --notes "Android app. Download the .apk on your phone and open it to install (allow installs from this source when asked)." \
+            --latest

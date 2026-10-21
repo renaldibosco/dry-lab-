@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+def run = Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
+
+android {
+    namespace 'com.renaldibosco.drylab'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.renaldibosco.drylab"
+        minSdk 26
+        targetSdk 35
+        versionCode run
+        versionName "1.0." + run
+    }
+
+    // One shared key so new builds install over old ones without uninstalling.
+    // Fine for testing and demos. For the Play Store, make a private key and keep it secret.
+    signingConfigs {
+        shared {
+            storeFile file('drylab-debug.keystore')
+            storePassword 'android'
+            keyAlias 'drylab'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug { signingConfig signingConfigs.shared }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.shared
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
