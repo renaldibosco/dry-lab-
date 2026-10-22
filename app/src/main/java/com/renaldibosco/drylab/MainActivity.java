@@ -11,6 +11,10 @@ import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.print.PrintAttributes;
+import android.print.PrintManager;
+import android.util.Base64;
 import android.provider.MediaStore;
 import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
@@ -26,6 +30,8 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -199,6 +205,48 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Dry Lab", text));
+            });
+        }
+
+        /**
+         * Saves a file the page made (backup, FASTA, report) where the person can find it: Downloads on Android 10+,
+         * the app's own folder before that. Returns a short place name, or "" when it failed.
+         */
+        @JavascriptInterface
+        public String saveFile(String name, String mime, String base64) {
+            try {
+                byte[] data = Base64.decode(base64, Base64.DEFAULT);
+                String safe = name == null ? "file" : name.replaceAll("[^A-Za-z0-9._-]", "_");
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.MediaColumns.DISPLAY_NAME, safe);
+                    v.put(MediaStore.MediaColumns.MIME_TYPE, mime == null || mime.isEmpty() ? "application/octet-stream" : mime);
+                    v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Dry Lab");
+                    Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    if (u == null) return "";
+                    try (OutputStream os = getContentResolver().openOutputStream(u)) { os.write(data); }
+                    return "Downloads/Dry Lab";
+                }
+                File dir = getExternalFilesDir(null);
+                if (dir == null) return "";
+                try (FileOutputStream os = new FileOutputStream(new File(dir, safe))) { os.write(data); }
+                return "the Dry Lab folder";
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** Opens the phone's print screen for the report page (choose "Save as PDF"). */
+        @JavascriptInterface
+        public void printPage(String title) {
+            runOnUiThread(() -> {
+                try {
+                    PrintManager pm = (PrintManager) getSystemService(Context.PRINT_SERVICE);
+                    String job = title == null || title.isEmpty() ? "Dry Lab report" : title;
+                    pm.print(job, web.createPrintDocumentAdapter(job), new PrintAttributes.Builder().build());
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Could not open the print screen", Toast.LENGTH_SHORT).show();
+                }
             });
         }
 

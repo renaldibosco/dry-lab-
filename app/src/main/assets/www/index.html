@@ -5,39 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>Dry Lab</title>
+<link rel="stylesheet" href="shared/base.css">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 <header class="top">
   <div class="brand">
-    <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><path d="M11 3h10M13 3v8L5 26a2.5 2.5 0 0 0 2.2 3.7h17.6A2.5 2.5 0 0 0 27 26L19 11V3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 21c3-2 5 2 8 0s4.5-1 5.5 0" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <div class="logo-tile"><svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><path d="M11 3h10M13 3v8L5 26a2.5 2.5 0 0 0 2.2 3.7h17.6A2.5 2.5 0 0 0 27 26L19 11V3" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 21c3-2 5 2 8 0s4.5-1 5.5 0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" opacity=".75"/></svg></div>
     <div><h1>Dry Lab</h1><p>Plan your PCR before the wet lab</p></div>
   </div>
   <div class="chips">
-    <button id="langBtn" class="chip" title="English / Tamil">தமிழ்</button>
-    <button id="learnBtn" class="chip on" aria-pressed="true" title="Show explanations">Learn mode</button>
+    <button id="langBtn" class="ib" title="Language" aria-label="Language"></button>
+    <button id="themeBtn" class="ib" title="Theme" aria-label="Theme"></button>
+    <button id="learnBtn" class="ib on" aria-pressed="true" title="Learn mode" aria-label="Learn mode"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg></button>
   </div>
 </header>
 
 <main>
 <!-- ============================== SEQUENCE ============================== -->
 <section id="tab-seq" class="tab active">
-  <div class="card newcard hidden" id="newCard">
-    <div class="title-row"><h2>New in Dry Lab 1.2</h2><button class="btn small ghost" id="newHide">Hide</button></div>
-    <p class="muted">Tap a button to go straight to it.</p>
-    <div class="newgrid">
-      <button data-new="map">DNA map<span>Genes and enzyme sites on a circle</span></button>
-      <button data-new="protein">Protein facts<span>Mass, pI and charge of each gene's protein</span></button>
-      <button data-new="clone">Clone a gene<span>Enzyme pairs and cloning primers</span></button>
-      <button data-new="mut">Mutation primers<span>Change one amino acid</span></button>
-      <button data-new="qpcr">qPCR primers<span>Short product inside the gene</span></button>
-      <button data-new="calc">qPCR calculators<span>Standard curve and ΔΔCt</span></button>
-      <button data-new="cmp">Check sequencing<span>Compare a Sanger result</span></button>
-      <button data-new="ai">Ask AI<span>Optional, needs internet</span></button>
-      <button data-new="viva">Viva practice<span>AI asks, marks and teaches</span></button>
-      <button data-new="rec">Lab record writer<span>Aim to Inference, by AI</span></button>
+  <div class="card hero" id="heroCard">
+    <h2>Upload your DNA. Get the start and stop codons.</h2>
+    <p>Open a FASTA or GenBank file, or paste a sequence. Dry Lab finds the genes, shows the ATG start and the stop codon, and makes your PCR template and primers.</p>
+    <div class="row wrap">
+      <label class="btn primary"><input type="file" id="fileInput2" accept=".fa,.fasta,.fna,.ffn,.gb,.gbk,.genbank,.txt,.seq,text/*" hidden><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>Open sequence file</label>
+      <button class="btn" id="heroPaste"><svg viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg>Paste</button>
+      <button class="btn" id="heroDemo">Try demo</button>
     </div>
   </div>
+  <div id="startStop"></div>
   <div class="card">
     <h2>1. Your DNA sequence</h2>
     <p class="learn">Paste DNA, or open a FASTA (.fasta, .fa), GenBank (.gb) or text file. Numbers and spaces are removed for you. RNA (U) is changed to DNA (T).</p>
@@ -79,6 +75,28 @@
       <p class="learn">Arrows are genes, pointing the way they are read. Enzymes that cut only once are named: they are the useful ones for opening a plasmid. Blue bars show more GC than average, orange bars less. Plasmids are circles: choose Circular for them.</p>
     </div>
     <button class="btn primary wide" data-go="genes">Find genes (start and stop codons) &rarr;</button>
+  </div>
+  <div class="card newcard hidden" id="newCard">
+    <div class="title-row"><h2>New in Dry Lab 1.3</h2><button class="btn small ghost" id="newHide">Hide</button></div>
+    <p class="muted">Tap a tile to go straight to it.</p>
+    <div class="tiles">
+      <button class="tile" data-new="digest"><span class="ico"><svg viewBox="0 0 24 24"><path d="M8 3v18M16 3v18M4 8h8M12 15h8"/></svg></span>Restriction digest<span class="s">87 enzymes, fragments on a gel</span></button>
+      <button class="tile" data-new="plasmid"><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4"/></svg></span>Plasmid library<span class="s">Real pUC19, pBAD30 and more</span></button>
+      <button class="tile" data-new="assembly"><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 12h7M14 12h7M10 8l4 4-4 4"/></svg></span>Gibson and Golden Gate<span class="s">Primers and a checked assembly</span></button>
+      <button class="tile" data-new="codon"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 7h5M4 12h8M4 17h5M15 7l5 5-5 5"/></svg></span>Codon optimizer<span class="s">E. coli, yeast, human, mouse</span></button>
+      <button class="tile" data-new="risk"><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3zM12 10v4M12 17h.01"/></svg></span>Primer risk report<span class="s">Hairpins and dimers, with energy</span></button>
+      <button class="tile" data-new="exon"><span class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="5" height="6"/><rect x="16" y="9" width="5" height="6"/><path d="M8 12h8"/></svg></span>Exon mapper<span class="s">Introns and exon-junction primers</span></button>
+      <button class="tile" data-new="echo"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 8l4 4-4 4M11 17h8"/></svg></span>Echo prompt<span class="s">Type commands in plain English</span></button>
+      <button class="tile" data-new="backup"><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M4 20h16"/></svg></span>Backup and PDF<span class="s">Notebook backup, printable report</span></button>
+      <button class="tile" data-new="map"><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 6 3"/></svg></span>DNA map<span class="s">Genes and enzyme sites on a circle</span></button>
+      <button class="tile" data-new="protein"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 8c3-4 5 4 8 0s4 4 6 0M5 16c3-4 5 4 8 0s4 4 6 0"/></svg></span>Protein facts<span class="s">Mass, pI and charge</span></button>
+      <button class="tile" data-new="clone"><span class="ico"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/></svg></span>Clone a gene<span class="s">Enzyme pairs and primers</span></button>
+      <button class="tile" data-new="mut"><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v18M6 9l6-6 6 6"/></svg></span>Mutation primers<span class="s">Change one amino acid</span></button>
+      <button class="tile" data-new="qpcr"><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 18c4 0 5-12 9-12s5 12 9 12"/></svg></span>qPCR primers<span class="s">Short product inside the gene</span></button>
+      <button class="tile" data-new="cmp"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 8h16M4 16h16M8 4v16"/></svg></span>Check sequencing<span class="s">Compare a Sanger result</span></button>
+      <button class="tile" data-new="ai"><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg></span>Ask AI<span class="s">Optional, needs internet</span></button>
+      <button class="tile" data-new="viva"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/></svg></span>Viva practice<span class="s">AI asks, marks and teaches</span></button>
+    </div>
   </div>
 </section>
 
@@ -251,6 +269,123 @@
   </div>
 </section>
 
+<!-- ============================== BUILD ============================== -->
+<section id="tab-build" class="tab">
+  <div class="jump" id="buildJump">
+    <button data-jump="dgCard">Digest</button>
+    <button data-jump="plCard">Plasmids</button>
+    <button data-jump="asCard">Assemble</button>
+    <button data-jump="cdCard">Codons</button>
+    <button data-jump="rkCard">Primer risk</button>
+    <button data-jump="exCard">Exons</button>
+    <button data-jump="ecCard">Echo</button>
+  </div>
+
+  <div class="card" id="dgCard">
+    <h2>Restriction digest</h2>
+    <p class="learn">Pick up to four enzymes. Dry Lab cuts your DNA on the computer and tells you how many pieces you will see on a gel, and what sticky ends they have.</p>
+    <label>DNA to cut<select id="dgSrc"></select></label>
+    <textarea id="dgPaste" class="hidden" rows="4" spellcheck="false" placeholder="Paste DNA here"></textarea>
+    <label class="check"><input type="checkbox" id="dgCirc"> Circular (a plasmid)</label>
+    <label>Enzymes <span id="dgCount" class="muted small"></span></label>
+    <input id="dgSearch" placeholder="Search an enzyme, for example Eco or GAATTC" autocomplete="off" spellcheck="false">
+    <div id="dgChips" class="chipbox"></div>
+    <div class="row wrap">
+      <button class="btn primary" id="dgRun">Digest</button>
+      <button class="btn" id="dgSingle">Enzymes that cut once</button>
+      <button class="btn ghost" id="dgClear">Clear</button>
+    </div>
+    <div id="dgOut"></div>
+  </div>
+
+  <div class="card" id="plCard">
+    <h2>Plasmid library</h2>
+    <p class="learn">Real, checked plasmid sequences to practise cloning on. Use one as your sequence, cut it, or use it as the vector for an assembly. Add your own plasmid too.</p>
+    <div id="plList"></div>
+    <details class="sub"><summary>Add my own plasmid</summary>
+      <input id="plName" placeholder="Name, for example pET-28a" autocomplete="off">
+      <textarea id="plSeq" rows="4" spellcheck="false" placeholder="Paste the plasmid DNA"></textarea>
+      <button class="btn small" id="plAdd">Save on this phone</button>
+    </details>
+  </div>
+
+  <div class="card" id="asCard">
+    <h2>Assemble DNA pieces</h2>
+    <div class="seg" id="asMode"><button data-as="gibson" class="on">Gibson</button><button data-as="gg">Golden Gate</button></div>
+    <div id="asGibson">
+      <p class="learn">Gibson joins pieces that share a matching end (an overlap). Dry Lab cuts your vector, adds the overlaps to the insert's primers, and checks that the pieces join into the right circle.</p>
+      <label>Vector<select id="gbVec"></select></label>
+      <div class="grid2">
+        <label>Cut with<select id="gbE1"></select></label>
+        <label>and<select id="gbE2"></select></label>
+      </div>
+      <label>Insert<select id="gbIns"></select></label>
+      <textarea id="gbPaste" class="hidden" rows="4" spellcheck="false" placeholder="Paste the insert DNA"></textarea>
+      <label>Overlap length (bases) <input id="gbOv" type="number" min="15" max="40" value="25" inputmode="numeric"></label>
+      <button class="btn primary" id="gbRun">Design the assembly</button>
+    </div>
+    <div id="asGG" class="hidden">
+      <p class="learn">Golden Gate uses enzymes that cut outside their own site (BsaI, BsmBI, BbsI, SapI). Each part gets its own 4-base sticky end, so the parts can only join in one order. Dry Lab picks safe sticky ends and checks the result.</p>
+      <label>Enzyme<select id="ggEnz"><option>BsaI</option><option>BsmBI</option><option>BbsI</option><option>SapI</option></select></label>
+      <div id="ggParts"></div>
+      <div class="row wrap"><button class="btn small" id="ggAdd">Add a part</button><button class="btn small ghost" id="ggDel">Remove last part</button></div>
+      <label class="check"><input type="checkbox" id="ggCirc"> The parts make a closed circle by themselves</label>
+      <div class="grid2" id="ggEnds">
+        <label>Left sticky end (optional)<input id="ggStart" maxlength="4" placeholder="auto" spellcheck="false" autocomplete="off"></label>
+        <label>Right sticky end (optional)<input id="ggEnd" maxlength="4" placeholder="auto" spellcheck="false" autocomplete="off"></label>
+      </div>
+      <button class="btn primary" id="ggRun">Design the assembly</button>
+    </div>
+    <div id="asOut"></div>
+  </div>
+
+  <div class="card" id="cdCard">
+    <h2>Codon optimizer</h2>
+    <p class="learn">Different species prefer different codons for the same amino acid. This rewrites a gene with the codons your host likes best, without changing the protein, and removes enzyme sites you do not want.</p>
+    <label>Start from<select id="cdSrc"></select></label>
+    <textarea id="cdIn" rows="4" spellcheck="false" placeholder="Paste a protein (letters like MKTAY...) or a coding DNA sequence"></textarea>
+    <div class="grid2">
+      <label>Host<select id="cdHost"></select></label>
+      <label>Style<select id="cdMode"><option value="balanced" data-t>Balanced (recommended)</option><option value="best" data-t>Always the favourite codon</option></select></label>
+    </div>
+    <div class="grid2">
+      <label>GC at least %<input id="cdGcMin" type="number" value="35" inputmode="numeric"></label>
+      <label>GC at most %<input id="cdGcMax" type="number" value="65" inputmode="numeric"></label>
+    </div>
+    <label>Remove these enzyme sites</label>
+    <div id="cdAvoid" class="chipbox"></div>
+    <button class="btn primary" id="cdRun">Optimize</button>
+    <div id="cdOut"></div>
+  </div>
+
+  <div class="card" id="rkCard">
+    <h2>Primer risk report</h2>
+    <p class="learn">Checks whether a primer folds back on itself (hairpin) or sticks to itself or to its partner (dimer), and gives the energy of the worst case. The more negative, the stickier.</p>
+    <input id="rkF" placeholder="Forward primer 5'-3'" spellcheck="false" autocomplete="off">
+    <input id="rkR" placeholder="Reverse primer 5'-3' (optional)" spellcheck="false" autocomplete="off">
+    <div class="row wrap"><button class="btn primary" id="rkRun">Check</button><button class="btn" id="rkUse">Use my designed pair</button></div>
+    <div id="rkOut"></div>
+  </div>
+
+  <div class="card" id="exCard">
+    <h2>Exon mapper</h2>
+    <p class="learn">Genes of plants, animals and fungi are cut into exons by introns. Give the genomic DNA and the spliced transcript (mRNA or CDS), and Dry Lab finds every exon, intron and splice signal, then designs qPCR primers that cross an exon junction so they do not copy genomic DNA.</p>
+    <label>Genomic DNA<select id="exGen"></select></label>
+    <textarea id="exGenPaste" class="hidden" rows="3" spellcheck="false" placeholder="Paste genomic DNA"></textarea>
+    <label>Spliced transcript (mRNA or CDS)</label>
+    <textarea id="exTr" rows="4" spellcheck="false" placeholder="Paste the transcript or coding sequence"></textarea>
+    <div class="row wrap"><button class="btn primary" id="exRun">Map the exons</button><label class="btn"><input type="file" id="exFile" accept=".fa,.fasta,.gb,.gbk,.txt,text/*" hidden>Open transcript file</label></div>
+    <div id="exOut"></div>
+  </div>
+
+  <div class="card" id="ecCard">
+    <h2>Echo prompt</h2>
+    <p class="learn">A small taste of Echo, the English-word language Renaldi is building. Type a line, for example: gc of ATGCGC, translate ATGGCCTAA, tm of GGATCCGATCGATCG, cut with EcoRI. Type help to see every word.</p>
+    <div class="row"><input id="ecIn" class="mono" placeholder="say gc of ATGCGC" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn primary" id="ecRun">Run</button></div>
+    <pre id="ecOut" class="out"></pre>
+  </div>
+</section>
+
 <!-- ============================== LAB ============================== -->
 <section id="tab-lab" class="tab">
   <div class="jump" id="labJump">
@@ -399,8 +534,28 @@
     <button class="btn" id="dimBtn">Check pair</button>
     <pre id="dimOut" class="out"></pre>
   </div>
-  <p class="about muted">Dry Lab 1.2. Works offline (only Ask AI uses the internet). Calculations: nearest-neighbour Tm (SantaLucia 1998) and protein facts (ExPASy ProtParam), checked against Biopython. Planning tool only: always confirm in the lab.</p>
-  <button class="btn small ghost" id="newShow">What's new in 1.2</button>
+
+  <div class="card" id="dataCard">
+    <h2>Report, backup and feedback</h2>
+    <p class="muted">Make a PDF of your work, keep a backup of your notebook, or send feedback after a trial in the lab.</p>
+    <div class="row wrap">
+      <button class="btn primary" id="pdfBtn">Make PDF report</button>
+      <button class="btn" id="bkBtn">Back up my notebook</button>
+      <label class="btn"><input type="file" id="bkFile" accept=".json,application/json,text/*" hidden>Restore a backup</label>
+    </div>
+    <p class="muted small">PDF: the phone's print screen opens. Choose "Save as PDF". Backups never include your AI key.</p>
+    <details class="sub"><summary>Trial feedback form</summary>
+      <p class="muted small">Used Dry Lab in a practical? Tell us how it went. Your answers are only saved on this phone until you share them.</p>
+      <label>Who used it<select id="fbWho"><option value="student" data-t>Student</option><option value="teacher" data-t>Teacher</option><option value="researcher" data-t>Researcher</option><option value="other" data-t>Other</option></select></label>
+      <label>Did the PCR work with the plan?<select id="fbWorked"><option value="yes" data-t>Yes</option><option value="partly" data-t>Partly</option><option value="no" data-t>No</option><option value="notyet" data-t>Not tried yet</option></select></label>
+      <label>How easy was it? (1 hard, 5 easy)<select id="fbEase"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select></label>
+      <label>Did the band size match the gel tool? (bp measured vs planned)<input id="fbSize" placeholder="for example planned 850, measured 870"></label>
+      <label>What was confusing or missing?<textarea id="fbText" rows="3"></textarea></label>
+      <button class="btn small" id="fbShare">Share feedback</button>
+    </details>
+  </div>
+  <p class="about muted">Dry Lab 1.3. Works offline (only Ask AI uses the internet). Calculations: nearest-neighbour Tm (SantaLucia 1998) and protein facts (ExPASy ProtParam), checked against Biopython. Restriction cuts checked against Biopython, primer energies against primer3, codon tables from Kazusa. Echo is the English-word language Renaldi is building. Planning tool only: always confirm in the lab.</p>
+  <button class="btn small ghost" id="newShow">What's new in 1.3</button>
 </section>
 </main>
 
@@ -410,17 +565,31 @@
   <button data-tab="primers"><svg viewBox="0 0 24 24"><path d="M4 8h8M12 8l-3-3M20 16h-8M12 16l3 3M4 12h16"/></svg><span>Primers</span></button>
   <button data-tab="pcr"><svg viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v9a4 4 0 1 1-4 0z M12 9v6"/></svg><span>PCR</span></button>
   <button data-tab="gel"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h3M13 7h3M8 11h3M13 14h3M8 16h3"/></svg><span>Gel</span></button>
+  <button data-tab="build"><svg viewBox="0 0 24 24"><path d="M14 4l6 6-9 9H5v-6zM12 6l6 6"/></svg><span>Build</span></button>
   <button data-tab="lab"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3M7.5 14h9"/></svg><span>Lab</span></button>
 </nav>
 <div id="toast" role="status"></div>
 
+<script src="shared/i18n.js"></script>
+<script src="js/lang/ta.js"></script>
+<script src="js/lang/hi.js"></script>
+<script src="js/lang/ml.js"></script>
+<script src="js/lang/te.js"></script>
+<script src="shared/ui.js"></script>
 <script src="js/demo.js"></script>
 <script src="js/bio.js"></script>
-<script src="js/ta.js"></script>
-<script src="js/i18n.js"></script>
+<script src="js/enzymes.js"></script>
+<script src="js/codons.js"></script>
+<script src="js/plasmids.js"></script>
+<script src="js/bio2.js"></script>
+<script src="js/bio3.js"></script>
 <script src="js/app.js"></script>
+<script src="js/template.js"></script>
 <script src="js/gel.js"></script>
 <script src="js/lab.js"></script>
 <script src="js/tools.js"></script>
+<script src="js/build.js"></script>
+<script src="js/echo.js"></script>
+<script src="js/data.js"></script>
 </body>
 </html>

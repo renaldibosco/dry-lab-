@@ -14,13 +14,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test the biology engine
-        run: node tests/test_bio.js
-
-      - name: Cross-check with Biopython
+      - name: Test the biology engines
         run: |
-          pip install --quiet biopython
+          mkdir -p tests/out
+          node tests/test_bio.js
+          node tests/test_build.js
+
+      - name: Cross-check with Biopython, primer3 and Kazusa codon tables
+        continue-on-error: true      # these download data; a network hiccup must not stop a release
+        run: |
+          pip install --quiet biopython primer3-py python-codon-tables
           python tests/check_with_biopython.py
+          python tests/check_digest_biopython.py
+          python tests/check_primer_dg.py
+          python tests/check_codons.py
+          mkdir -p /tmp/bp && cd /tmp/bp && pip download biopython --no-binary :all: --no-deps --quiet && tar xzf biopython-*.tar.gz
+          cd "$GITHUB_WORKSPACE" && python tests/check_exons.py "$(ls -d /tmp/bp/biopython-*/Tests/GenBank)"
 
       - uses: actions/setup-java@v4
         with:
@@ -33,7 +42,7 @@ jobs:
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Name the APK
-        run: cp app/build/outputs/apk/release/app-release.apk DryLab-1.2.${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/release/app-release.apk DryLab-1.3.${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -44,7 +53,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v1.2.${{ github.run_number }}" "DryLab-1.2.${{ github.run_number }}.apk" \
-            --title "Dry Lab 1.2.${{ github.run_number }}" \
+          gh release create "v1.3.${{ github.run_number }}" "DryLab-1.3.${{ github.run_number }}.apk" \
+            --title "Dry Lab 1.3.${{ github.run_number }}" \
             --notes "Android app. Download the .apk on your phone and open it to install (allow installs from this source when asked)." \
             --latest

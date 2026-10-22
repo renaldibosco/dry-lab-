@@ -13,7 +13,7 @@ android {
         minSdk 26
         targetSdk 35
         versionCode run
-        versionName "1.2." + run
+        versionName "1.3." + run
     }
 
     // One shared key so new builds install over old ones without uninstalling.
@@ -36,6 +36,10 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+    // The screens, fonts and language code shared with the Wet Lab app live in ../shared and are packed into the same assets folder.
+    sourceSets {
+        main.assets.srcDirs += ['../shared/assets']
     }
     lint {
         checkReleaseBuilds false

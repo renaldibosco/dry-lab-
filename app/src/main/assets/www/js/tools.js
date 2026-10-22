@@ -460,12 +460,14 @@
     return L.join('\n');
   }
 
+  function replyLang() { const l = D.I.LANGS.find(x => x.id === D.I.lang); return l ? l.name + ' (' + l.native + ')' : 'English'; }
+
   function system() {
     return 'You are the helper inside Dry Lab, a PCR planning app for biotechnology students and small labs in India. ' +
       'Answer questions about PCR, primers, gels, cloning, DNA, proteins and lab technique. Be practical and clear: short paragraphs or short lists, simple words. ' +
       'If the student attached results from the app, use those numbers. Say when something must be checked in the lab or with a teacher. Never invent measured results. ' +
       'Do not give help with making dangerous pathogens or toxins. ' +
-      (D.I.lang === 'ta' ? 'Reply in Tamil (தமிழ்). Keep technical terms such as PCR, primer, Tm, GC, gel in English.' : 'Reply in English.');
+      (D.I.lang === 'en' ? 'Reply in English.' : 'Reply in ' + replyLang() + '. Keep technical terms such as PCR, primer, Tm, GC, gel in English.');
   }
 
   function md(t) {
@@ -564,7 +566,7 @@
     'Results were checked against Biopython (Tm within 0.01 C, ORFs identical, protein facts match ProtParam). Built with HTML/JavaScript inside an Android WebView, Java wrapper, English and Tamil.';
 
   function vivaSystem(topic) {
-    const lang = D.I.lang === 'ta' ? 'Write in Tamil (தமிழ்), keeping technical terms in English, but keep the labels "Score:", "Model answer:" and "Next question:" in English.' : 'Write in English.';
+    const lang = D.I.lang !== 'en' ? 'Write in ' + replyLang() + ', keeping technical terms in English, but keep the labels "Score:", "Model answer:" and "Next question:" in English.' : 'Write in English.';
     return `You are a friendly but strict viva (oral exam) examiner for a B.Sc. Biotechnology practical exam in India. Topic: ${VIVA_TOPICS[topic]}. ` +
       'Ask ONE clear question at a time, the kind an external examiner really asks. Start easy, then get harder. ' +
       'When the student answers, reply in this order: a first line exactly like "Score: 7/10"; then one or two lines on what was right and what was missing or wrong; ' +
@@ -708,14 +710,17 @@
     if (k === 'ai') { D.show('lab'); scrollToEl($('aiCard')); }
     if (k === 'viva') { D.show('lab'); scrollToEl($('vivaCard')); }
     if (k === 'rec') { D.show('lab'); fillRecFrom(); scrollToEl($('recCard')); }
+    const BUILD = { digest: 'dgCard', plasmid: 'plCard', assembly: 'asCard', codon: 'cdCard', risk: 'rkCard', exon: 'exCard', echo: 'ecCard' };
+    if (BUILD[k]) { D.show('build'); scrollToEl($(BUILD[k])); }
+    if (k === 'backup') { D.show('lab'); scrollToEl($('dataCard')); }
   }
 
   // ================================================================ wire up
   function init() {
-    $('newCard').classList.toggle('hidden', D.store.get('new12', '') === 'hidden');
+    $('newCard').classList.toggle('hidden', D.store.get('new13', '') === 'hidden');
     $('newCard').onclick = (e) => { const b = e.target.closest('[data-new]'); if (b) goFeature(b.dataset.new); };
-    $('newHide').onclick = () => { $('newCard').classList.add('hidden'); D.store.set('new12', 'hidden'); };
-    $('newShow').onclick = () => { $('newCard').classList.remove('hidden'); D.store.set('new12', ''); D.show('seq'); };
+    $('newHide').onclick = () => { $('newCard').classList.add('hidden'); D.store.set('new13', 'hidden'); };
+    $('newShow').onclick = () => { $('newCard').classList.remove('hidden'); D.store.set('new13', ''); D.show('seq'); };
     $('labJump').onclick = (e) => { const b = e.target.closest('[data-jump]'); if (b) scrollToEl($(b.dataset.jump)); };
     if ($('mapSeg')) $('mapSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; MAP.circular = b.dataset.map === 'circ'; drawMap(); };
     D.onData(() => { if (MAP.rec !== S.rec) { MAP.rec = S.rec; MAP.circular = null; } drawMap(); fillCmpRef(); });

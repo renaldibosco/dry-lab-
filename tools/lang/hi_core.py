@@ -1,0 +1,9 @@
+WORDS = {
+"Sequence": "अनुक्रम", "Genes": "जीन", "Primers": "प्राइमर", "PCR": "PCR", "Gel": "जेल", "Build": "निर्माण", "Lab": "लैब",
+"Dry Lab": "ड्राई लैब", "Plan your PCR before the wet lab": "वेट लैब से पहले अपना PCR तय करें",
+"Upload your DNA. Get the start and stop codons.": "अपना DNA डालें। स्टार्ट और स्टॉप कोडॉन पाएँ।",
+"Open sequence file": "अनुक्रम फ़ाइल खोलें", "Paste": "चिपकाएँ", "Try demo": "डेमो आज़माएँ",
+"Start and stop codons": "स्टार्ट और स्टॉप कोडॉन", "Your PCR template": "आपका PCR टेम्पलेट", "Gene only": "केवल जीन", "With flanks": "आसपास सहित", "My region": "मेरा क्षेत्र",
+"Design primers for this template": "इस टेम्पलेट के लिए प्राइमर बनाएँ", "Copy template": "टेम्पलेट कॉपी करें", "Language": "भाषा", "Theme": "थीम", "Start": "शुरू", "Stop": "रुकना", "Gene": "जीन",
+"Restriction digest": "रेस्ट्रिक्शन डाइजेस्ट", "Plasmid library": "प्लास्मिड लाइब्रेरी", "Codon optimizer": "कोडॉन ऑप्टिमाइज़र", "Exon mapper": "एक्सॉन मैपर", "Primer risk report": "प्राइमर जोखिम रिपोर्ट", "Echo prompt": "इको प्रॉम्प्ट",
+}

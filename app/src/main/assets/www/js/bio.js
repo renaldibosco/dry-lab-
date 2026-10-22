@@ -998,7 +998,7 @@
     hairpin, checkPrimer, defaultDesign, designPrimers, pcrProgram, masterMix, cutSites, findMotif, round,
     CUT, LADDERS, AGAROSE, digest, migration, bestAgarose, sizeFromPosition, findBands, fitLadder, dilution, gramsFor,
     nucleicConc, copies, agaroseGrams, bufferRecipe,
-    proteinFacts, hydropathy, compareSeqs, mutagenesis, BEST_CODON, cloningPairs, qpcrCurve, ddct };
+    proteinFacts, hydropathy, compareSeqs, mutagenesis, BEST_CODON, cloningPairs, qpcrCurve, ddct, NN, INIT_AT, INIT_GC, DEFAULT_COND, AA_STOPS: STOPS };
   root.Bio = Bio;
   if (typeof module !== 'undefined' && module.exports) module.exports = Bio;
 })(typeof window !== 'undefined' ? window : globalThis);

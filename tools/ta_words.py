@@ -701,7 +701,7 @@ PATTERNS = [
 ]
 
 here = os.path.dirname(os.path.abspath(__file__))
-out = os.path.join(here, "..", "app", "src", "main", "assets", "www", "js", "ta.js")
+out = os.path.join(here, "..", "app", "src", "main", "assets", "www", "js", "lang", "ta.js")
 with open(out, "w", encoding="utf-8") as f:
     f.write("/* Tamil words for Dry Lab. Made by tools/ta_words.py - edit that file, not this one. */\n")
     f.write("window.DRYLAB_TA = " + json.dumps(TA, ensure_ascii=False, indent=0) + ";\n")

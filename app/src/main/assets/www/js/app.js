@@ -586,8 +586,6 @@
   // ------------------------------------------------------------ language
   function setLang(l) {
     I.setLang(l);
-    store.set('lang', l);
-    $('langBtn').textContent = l === 'ta' ? 'English' : 'தமிழ்';
     setMode(S.mode);
     fillMenus();
     $('simBtn').textContent = T(sim.on ? 'Pause' : 'Play');
@@ -602,6 +600,7 @@
 
   // ------------------------------------------------------------ wire up
   function init() {
+    if (window.UI) UI.init({ prefix: 'drylab.', onLang: setLang });
     const learn = store.get('learn', '1') === '1';
     document.body.classList.toggle('learn-on', learn);
     $('learnBtn').classList.toggle('on', learn); $('learnBtn').setAttribute('aria-pressed', learn);
@@ -610,14 +609,13 @@
       document.body.classList.toggle('learn-on', on); $('learnBtn').classList.toggle('on', on);
       $('learnBtn').setAttribute('aria-pressed', on); store.set('learn', on ? '1' : '0');
     };
-    $('langBtn').onclick = () => setLang(I.lang === 'ta' ? 'en' : 'ta');
     document.querySelectorAll('#nav button').forEach(b => b.onclick = () => show(b.dataset.tab));
     document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => show(b.dataset.go));
     $('analyzeBtn').onclick = () => analyze($('seqInput').value);
     $('demoBtn').onclick = () => { $('seqInput').value = window.DEMO_SEQUENCE; analyze(window.DEMO_SEQUENCE); toast(T('Demo loaded')); };
     $('clearBtn').onclick = () => { $('seqInput').value = ''; $('seqInput').focus(); };
     $('recordSelect').onchange = (e) => pick(+e.target.value);
-    $('fileInput').onchange = (e) => {
+    const onFile = (e) => {
       const f = e.target.files && e.target.files[0]; if (!f) return;
       if (f.size > 30e6) { toast(T('File is too big (over 30 MB)')); return; }
       const rd = new FileReader();
@@ -625,6 +623,10 @@
       rd.onerror = () => toast(T('Could not read that file'));
       rd.readAsText(f); e.target.value = '';
     };
+    $('fileInput').onchange = onFile;
+    if ($('fileInput2')) $('fileInput2').onchange = onFile;
+    if ($('heroPaste')) $('heroPaste').onclick = () => { const t = $('seqInput'); t.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => t.focus(), 300); };
+    if ($('heroDemo')) $('heroDemo').onclick = () => $('demoBtn').click();
     $('orfBtn').onclick = () => runOrfs(false);
     $('orfList').onclick = (e) => { const c = e.target.closest('.orf'); if (c && !e.target.closest('.more')) expandOrf(c); };
     $('targetSelect').onchange = onTarget;
@@ -653,10 +655,10 @@
     setMode('exact');
     mix();
     const lang = store.get('lang', 'en');
-    if (lang === 'ta') { I.setLang('ta'); $('langBtn').textContent = 'English'; setMode('exact'); }
+    if (lang !== 'en') { I.setLang(lang); setMode('exact'); }
     const saved = store.get('input', '');
     if (saved) { $('seqInput').value = saved.length > 200000 ? saved.slice(0, 200000) : saved; analyze(saved, true); }
-    if (lang === 'ta') I.apply(document.body);
+    if (lang !== 'en') I.apply(document.body);
     drawSim();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
     const tab = store.get('tab', 'seq');
@@ -664,7 +666,7 @@
   }
 
   // shared with gel.js and lab.js
-  window.DryLab = { S, $, B, T, I, esc, fmtN, store, css, toast, copy, share, show, prepCanvas, conditions, programText, cloneGene,
+  window.DryLab = { analyze, S, $, B, T, I, esc, fmtN, store, css, toast, copy, share, show, prepCanvas, conditions, programText, cloneGene,
     onShow: (tab, f) => { (showHooks[tab] = showHooks[tab] || []).push(f); }, onLang: (f) => langHooks.push(f),
     onData: (f) => dataHooks.push(f), onGene: (f) => geneHooks.push(f) };
   document.addEventListener('DOMContentLoaded', init);
